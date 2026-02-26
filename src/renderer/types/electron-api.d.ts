@@ -146,6 +146,7 @@ declare global {
             fontFamily: string;
           };
           defaultOpenInApp?: string;
+          hiddenOpenInApps?: string[];
         };
         error?: string;
       }>;
@@ -227,6 +228,7 @@ declare global {
             fontFamily?: string;
           };
           defaultOpenInApp?: string;
+          hiddenOpenInApps?: string[];
         }>
       ) => Promise<{
         success: boolean;
@@ -307,6 +309,7 @@ declare global {
             fontFamily: string;
           };
           defaultOpenInApp?: string;
+          hiddenOpenInApps?: string[];
         };
         error?: string;
       }>;
@@ -1258,6 +1261,9 @@ declare global {
         };
         error?: string;
       }>;
+      sshCheckIsGitRepo: (connectionId: string, remotePath: string) => Promise<boolean>;
+      sshInitRepo: (connectionId: string, parentPath: string, repoName: string) => Promise<string>;
+      sshCloneRepo: (connectionId: string, repoUrl: string, targetPath: string) => Promise<string>;
 
       // Skills management
       skillsGetCatalog: () => Promise<{
