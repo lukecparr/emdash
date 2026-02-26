@@ -8,8 +8,7 @@
     "docker-compose.override.yml"
   ],
   "scripts": {
-    "setup": "",
-    "run": "",
-    "teardown": ""
+    "setup": "pnpm install",
+    "run": "pnpm dev"
   }
 }
