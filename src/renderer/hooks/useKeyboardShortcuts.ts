@@ -97,8 +97,8 @@ export function normalizeShortcutKey(value: string): string {
 
 export const APP_SHORTCUTS: Record<string, AppShortcut> = {
   COMMAND_PALETTE: {
-    key: 'k',
-    modifier: 'cmd',
+    key: 'p',
+    modifier: 'cmd+shift',
     label: 'Command Palette',
     description: 'Open the command palette to quickly search and navigate',
     category: 'Navigation',
@@ -142,7 +142,7 @@ export const APP_SHORTCUTS: Record<string, AppShortcut> = {
   },
 
   TOGGLE_KANBAN: {
-    key: 'p',
+    key: 'k',
     modifier: 'cmd',
     label: 'Toggle Kanban',
     description: 'Show or hide the Kanban board',
