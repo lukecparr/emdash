@@ -1300,6 +1300,34 @@ declare global {
         data?: import('@shared/skills/types').CatalogSkill;
         error?: string;
       }>;
+
+      // Agent session (streaming-json integration)
+      agentSessionCreate: (opts: {
+        sessionId: string;
+        cwd: string;
+        providerId: string;
+        autoApprove: boolean;
+        conversationId: string;
+        taskId: string;
+        env?: Record<string, string>;
+        resume?: boolean;
+      }) => Promise<{
+        ok: boolean;
+        error?: string;
+        history?: import('@shared/types/agentEvents').HistoryMessage[];
+      }>;
+      agentSessionPrompt: (opts: {
+        sessionId: string;
+        message: string;
+      }) => Promise<{ ok: boolean; error?: string }>;
+      agentSessionAbort: (opts: { sessionId: string }) => Promise<{ ok: boolean; error?: string }>;
+      agentSessionDestroy: (opts: {
+        sessionId: string;
+      }) => Promise<{ ok: boolean; error?: string }>;
+      onAgentEvent: (
+        sessionId: string,
+        listener: (event: import('@shared/types/agentEvents').NormalizedEvent) => void
+      ) => () => void;
     };
   }
 }
@@ -1880,6 +1908,32 @@ export interface ElectronAPI {
     data?: import('@shared/skills/types').CatalogSkill;
     error?: string;
   }>;
+
+  // Agent session (streaming-json integration)
+  agentSessionCreate: (opts: {
+    sessionId: string;
+    cwd: string;
+    providerId: string;
+    autoApprove: boolean;
+    conversationId: string;
+    taskId: string;
+    env?: Record<string, string>;
+    resume?: boolean;
+  }) => Promise<{
+    ok: boolean;
+    error?: string;
+    history?: import('@shared/types/agentEvents').HistoryMessage[];
+  }>;
+  agentSessionPrompt: (opts: {
+    sessionId: string;
+    message: string;
+  }) => Promise<{ ok: boolean; error?: string }>;
+  agentSessionAbort: (opts: { sessionId: string }) => Promise<{ ok: boolean; error?: string }>;
+  agentSessionDestroy: (opts: { sessionId: string }) => Promise<{ ok: boolean; error?: string }>;
+  onAgentEvent: (
+    sessionId: string,
+    listener: (event: import('@shared/types/agentEvents').NormalizedEvent) => void
+  ) => () => void;
 }
 import type { TerminalSnapshotPayload } from '#types/terminalSnapshot';
 import type { OpenInAppId } from '#shared/openInApps';

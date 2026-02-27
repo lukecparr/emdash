@@ -17,7 +17,8 @@ import { type Agent } from '../types';
 import { Task } from '../types/chat';
 import { useTaskTerminals } from '@/lib/taskTerminalsStore';
 import { activityStore } from '@/lib/activityStore';
-import { getInstallCommandForProvider } from '@shared/providers/registry';
+import { getInstallCommandForProvider, getProvider } from '@shared/providers/registry';
+import UnifiedChatPanel from './UnifiedChatPanel';
 import { useAutoScrollOnTaskSwitch } from '@/hooks/useAutoScrollOnTaskSwitch';
 import { TaskScopeProvider } from './TaskScopeContext';
 import { CreateChatModal } from './CreateChatModal';
@@ -1062,93 +1063,110 @@ const ChatInterface: React.FC<Props> = ({
               }`}
             >
               {/* Wait for conversations to load to ensure stable terminalId */}
-              {conversationsLoaded && (
-                <TerminalPane
-                  ref={terminalRef}
-                  id={terminalId}
+              {conversationsLoaded && getProvider(agent)?.integrationMode === 'streaming-json' ? (
+                <UnifiedChatPanel
+                  key={terminalId}
+                  sessionId={terminalId}
                   cwd={terminalCwd}
-                  remote={
-                    projectRemoteConnectionId
-                      ? { connectionId: projectRemoteConnectionId }
-                      : undefined
-                  }
-                  providerId={agent}
                   autoApprove={autoApproveEnabled}
+                  taskId={task.id}
+                  conversationId={activeConversationId ?? task.id}
                   env={taskEnv}
-                  keepAlive={true}
-                  mapShiftEnterToCtrlJ
-                  disableSnapshots={false}
-                  onActivity={() => {
-                    try {
-                      window.localStorage.setItem(`agent:locked:${task.id}`, agent);
-                    } catch {}
-                  }}
-                  onStartError={(message) => {
-                    setCliStartError(message);
-                  }}
-                  onStartSuccess={() => {
-                    setCliStartError(null);
-                    // Mark initial injection as sent so it won't re-run on restart
-                    if (initialInjection && !task.metadata?.initialInjectionSent) {
-                      void window.electronAPI.saveTask({
-                        ...task,
-                        metadata: {
-                          ...task.metadata,
-                          initialInjectionSent: true,
-                        },
-                      });
+                  resume={false}
+                  className="h-full w-full"
+                />
+              ) : (
+                conversationsLoaded && (
+                  <TerminalPane
+                    ref={terminalRef}
+                    id={terminalId}
+                    cwd={terminalCwd}
+                    remote={
+                      projectRemoteConnectionId
+                        ? { connectionId: projectRemoteConnectionId }
+                        : undefined
                     }
-                  }}
-                  variant={
-                    effectiveTheme === 'dark' || effectiveTheme === 'dark-black' ? 'dark' : 'light'
-                  }
-                  themeOverride={
-                    agent === 'charm'
-                      ? {
-                          background:
-                            effectiveTheme === 'dark-black'
-                              ? '#0a0a0a'
-                              : effectiveTheme === 'dark'
-                                ? '#1f2937'
-                                : '#ffffff',
-                          selectionBackground: 'rgba(96, 165, 250, 0.35)',
-                          selectionForeground: effectiveTheme === 'light' ? '#0f172a' : '#f9fafb',
-                        }
-                      : agent === 'mistral'
+                    providerId={agent}
+                    autoApprove={autoApproveEnabled}
+                    env={taskEnv}
+                    keepAlive={true}
+                    mapShiftEnterToCtrlJ
+                    disableSnapshots={false}
+                    onActivity={() => {
+                      try {
+                        window.localStorage.setItem(`agent:locked:${task.id}`, agent);
+                      } catch {}
+                    }}
+                    onStartError={(message) => {
+                      setCliStartError(message);
+                    }}
+                    onStartSuccess={() => {
+                      setCliStartError(null);
+                      // Mark initial injection as sent so it won't re-run on restart
+                      if (initialInjection && !task.metadata?.initialInjectionSent) {
+                        void window.electronAPI.saveTask({
+                          ...task,
+                          metadata: {
+                            ...task.metadata,
+                            initialInjectionSent: true,
+                          },
+                        });
+                      }
+                    }}
+                    variant={
+                      effectiveTheme === 'dark' || effectiveTheme === 'dark-black'
+                        ? 'dark'
+                        : 'light'
+                    }
+                    themeOverride={
+                      agent === 'charm'
                         ? {
                             background:
                               effectiveTheme === 'dark-black'
-                                ? '#141820'
+                                ? '#0a0a0a'
                                 : effectiveTheme === 'dark'
-                                  ? '#202938'
+                                  ? '#1f2937'
                                   : '#ffffff',
                             selectionBackground: 'rgba(96, 165, 250, 0.35)',
                             selectionForeground: effectiveTheme === 'light' ? '#0f172a' : '#f9fafb',
                           }
-                        : effectiveTheme === 'dark-black'
+                        : agent === 'mistral'
                           ? {
-                              background: '#000000',
+                              background:
+                                effectiveTheme === 'dark-black'
+                                  ? '#141820'
+                                  : effectiveTheme === 'dark'
+                                    ? '#202938'
+                                    : '#ffffff',
                               selectionBackground: 'rgba(96, 165, 250, 0.35)',
-                              selectionForeground: '#f9fafb',
+                              selectionForeground:
+                                effectiveTheme === 'light' ? '#0f172a' : '#f9fafb',
                             }
-                          : undefined
-                  }
-                  contentFilter={
-                    agent === 'charm' &&
-                    effectiveTheme !== 'dark' &&
-                    effectiveTheme !== 'dark-black'
-                      ? 'invert(1) hue-rotate(180deg) brightness(1.1) contrast(1.05)'
-                      : undefined
-                  }
-                  initialPrompt={
-                    agentMeta[agent]?.initialPromptFlag !== undefined &&
-                    !agentMeta[agent]?.useKeystrokeInjection &&
-                    !task.metadata?.initialInjectionSent
-                      ? (initialInjection ?? undefined)
-                      : undefined
-                  }
-                  className="h-full w-full"
-                />
+                          : effectiveTheme === 'dark-black'
+                            ? {
+                                background: '#000000',
+                                selectionBackground: 'rgba(96, 165, 250, 0.35)',
+                                selectionForeground: '#f9fafb',
+                              }
+                            : undefined
+                    }
+                    contentFilter={
+                      agent === 'charm' &&
+                      effectiveTheme !== 'dark' &&
+                      effectiveTheme !== 'dark-black'
+                        ? 'invert(1) hue-rotate(180deg) brightness(1.1) contrast(1.05)'
+                        : undefined
+                    }
+                    initialPrompt={
+                      agentMeta[agent]?.initialPromptFlag !== undefined &&
+                      !agentMeta[agent]?.useKeystrokeInjection &&
+                      !task.metadata?.initialInjectionSent
+                        ? (initialInjection ?? undefined)
+                        : undefined
+                    }
+                    className="h-full w-full"
+                  />
+                )
               )}
             </div>
           </div>

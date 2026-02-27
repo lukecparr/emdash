@@ -55,6 +55,12 @@ export type ProviderDefinition = {
   autoStartCommand?: string;
   icon?: string;
   terminalOnly?: boolean;
+  /**
+   * How the UI integrates with this provider.
+   * - 'terminal': rendered via xterm.js PTY (default for all providers)
+   * - 'streaming-json': spawned with --output-format stream-json, renders structured UI
+   */
+  integrationMode?: 'terminal' | 'streaming-json';
 };
 
 export const PROVIDERS: ProviderDefinition[] = [
@@ -86,7 +92,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     sessionIdFlag: '--session-id',
     planActivateCommand: '/plan',
     icon: 'claude.png',
-    terminalOnly: true,
+    integrationMode: 'streaming-json',
   },
   {
     id: 'cursor',
