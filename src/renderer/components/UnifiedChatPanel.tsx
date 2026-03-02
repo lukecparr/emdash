@@ -7,6 +7,7 @@ import type { NormalizedEvent, ToolResult } from '@shared/types/agentEvents';
 interface UnifiedChatPanelProps {
   sessionId: string;
   cwd: string;
+  providerId: string;
   autoApprove: boolean;
   taskId: string;
   conversationId: string;
@@ -23,6 +24,7 @@ function nextId(): string {
 const UnifiedChatPanel: React.FC<UnifiedChatPanelProps> = ({
   sessionId,
   cwd,
+  providerId,
   autoApprove,
   taskId,
   conversationId,
@@ -164,7 +166,7 @@ const UnifiedChatPanel: React.FC<UnifiedChatPanelProps> = ({
       const result = await window.electronAPI.agentSessionCreate({
         sessionId,
         cwd,
-        providerId: 'claude',
+        providerId,
         autoApprove,
         conversationId,
         taskId,
@@ -198,7 +200,17 @@ const UnifiedChatPanel: React.FC<UnifiedChatPanelProps> = ({
       off();
       window.electronAPI.agentSessionDestroy({ sessionId }).catch(() => {});
     };
-  }, [sessionId, cwd, autoApprove, conversationId, taskId, env, resume, handleNormalizedEvent]);
+  }, [
+    sessionId,
+    cwd,
+    providerId,
+    autoApprove,
+    conversationId,
+    taskId,
+    env,
+    resume,
+    handleNormalizedEvent,
+  ]);
 
   const handleSubmit = useCallback(async () => {
     const text = inputText.trim();
@@ -270,7 +282,7 @@ const UnifiedChatPanel: React.FC<UnifiedChatPanelProps> = ({
             onKeyDown={handleKeyDown}
             placeholder={
               sessionReady
-                ? 'Message Claude… (Enter to send, Shift+Enter for newline)'
+                ? `Message ${providerId.charAt(0).toUpperCase() + providerId.slice(1)}… (Enter to send, Shift+Enter for newline)`
                 : 'Connecting…'
             }
             disabled={!sessionReady}

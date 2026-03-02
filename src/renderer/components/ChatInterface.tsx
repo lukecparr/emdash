@@ -1068,11 +1068,12 @@ const ChatInterface: React.FC<Props> = ({
                   key={terminalId}
                   sessionId={terminalId}
                   cwd={terminalCwd}
+                  providerId={agent}
                   autoApprove={autoApproveEnabled}
                   taskId={task.id}
                   conversationId={activeConversationId ?? task.id}
                   env={taskEnv}
-                  resume={false}
+                  resume={true}
                   className="h-full w-full"
                 />
               ) : (

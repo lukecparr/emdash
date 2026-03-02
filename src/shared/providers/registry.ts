@@ -341,7 +341,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     initialPromptFlag: '',
     resumeFlag: '-c',
     icon: 'pi.png',
-    terminalOnly: true,
+    integrationMode: 'streaming-json',
   },
 ];
 
