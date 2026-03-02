@@ -17,6 +17,7 @@ import { getProviderCustomConfig } from '../settings';
 const AGENT_ENV_VARS = [
   'AMP_API_KEY',
   'ANTHROPIC_API_KEY',
+  'ANTHROPIC_OAUTH_TOKEN',
   'AUGMENT_SESSION_AUTH',
   'AWS_ACCESS_KEY_ID',
   'AWS_DEFAULT_REGION',

@@ -23,6 +23,7 @@ import { registerNetIpc } from './netIpc';
 import { registerLineCommentsIpc } from './lineCommentsIpc';
 import { registerSshIpc } from './sshIpc';
 import { registerSkillsIpc } from './skillsIpc';
+import { registerAgentSessionIpc } from './agentSessionIpc';
 
 export function registerAllIpc() {
   // Core app/utility IPC
@@ -54,4 +55,5 @@ export function registerAllIpc() {
   registerPlanLockIpc();
   registerSshIpc();
   registerSkillsIpc();
+  registerAgentSessionIpc();
 }

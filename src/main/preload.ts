@@ -133,6 +133,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   terminalGetTheme: () => ipcRenderer.invoke('terminal:getTheme'),
 
+  // Agent session (streaming-json integration)
+  agentSessionCreate: (opts: {
+    sessionId: string;
+    cwd: string;
+    providerId: string;
+    autoApprove: boolean;
+    conversationId: string;
+    taskId: string;
+    env?: Record<string, string>;
+    resume?: boolean;
+  }) => ipcRenderer.invoke('agentSession:create', opts),
+  agentSessionPrompt: (opts: { sessionId: string; message: string }) =>
+    ipcRenderer.invoke('agentSession:prompt', opts),
+  agentSessionAbort: (opts: { sessionId: string }) =>
+    ipcRenderer.invoke('agentSession:abort', opts),
+  agentSessionDestroy: (opts: { sessionId: string }) =>
+    ipcRenderer.invoke('agentSession:destroy', opts),
+  onAgentEvent: (sessionId: string, listener: (event: any) => void) => {
+    const channel = `agentSession:event:${sessionId}`;
+    const wrapped = (_: Electron.IpcRendererEvent, event: any) => listener(event);
+    ipcRenderer.on(channel, wrapped);
+    return () => ipcRenderer.removeListener(channel, wrapped);
+  },
+
   // App settings
   getSettings: () => ipcRenderer.invoke('settings:get'),
   updateSettings: (settings: any) => ipcRenderer.invoke('settings:update', settings),
