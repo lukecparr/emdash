@@ -151,7 +151,14 @@ class AgentSessionService {
   // In-progress assistant message being assembled during a Pi turn
   private piCurrentMsg = new Map<
     string,
-    { id: string; blocks: Array<{ kind: 'text'; text: string } | { kind: 'thinking'; text: string } | { kind: 'tool'; toolName: string; toolCallId: string; args: unknown; result?: ToolResult }> }
+    {
+      id: string;
+      blocks: Array<
+        | { kind: 'text'; text: string }
+        | { kind: 'thinking'; text: string }
+        | { kind: 'tool'; toolName: string; toolCallId: string; args: unknown; result?: ToolResult }
+      >;
+    }
   >();
   // Meta for Pi sessions needed by sendMessage (which doesn't have taskId/conversationId)
   private piSessionMeta = new Map<string, { taskId: string; conversationId: string }>();
@@ -245,7 +252,7 @@ class AgentSessionService {
       adapter.start();
 
       log.info(
-        `[AgentSessionService] Created Pi session: ${sessionId} (history=${history.length} msgs)`,
+        `[AgentSessionService] Created Pi session: ${sessionId} (history=${history.length} msgs)`
       );
 
       return history;
@@ -326,7 +333,11 @@ class AgentSessionService {
     return path.join(dir, `${taskId}-${conversationId}-history.json`);
   }
 
-  private loadPiHistory(piSessionKey: string, taskId: string, conversationId: string): HistoryMessage[] {
+  private loadPiHistory(
+    piSessionKey: string,
+    taskId: string,
+    conversationId: string
+  ): HistoryMessage[] {
     const cached = this.piHistoryCache.get(piSessionKey);
     if (cached) return cached;
 
@@ -349,7 +360,11 @@ class AgentSessionService {
     const history = this.piHistoryCache.get(piSessionKey);
     if (!history) return;
     try {
-      fs.writeFileSync(this.makePiHistoryPath(taskId, conversationId), JSON.stringify(history), 'utf-8');
+      fs.writeFileSync(
+        this.makePiHistoryPath(taskId, conversationId),
+        JSON.stringify(history),
+        'utf-8'
+      );
     } catch (err) {
       log.warn(`[AgentSessionService] Failed to save Pi history for ${piSessionKey}:`, err);
     }
@@ -359,7 +374,7 @@ class AgentSessionService {
     event: NormalizedEvent,
     piSessionKey: string,
     taskId: string,
-    conversationId: string,
+    conversationId: string
   ): void {
     const history = this.piHistoryCache.get(piSessionKey) ?? [];
 
@@ -410,7 +425,7 @@ class AgentSessionService {
         const cur = this.piCurrentMsg.get(piSessionKey);
         if (!cur) break;
         const toolBlock = cur.blocks.find(
-          (b) => b.kind === 'tool' && b.toolCallId === event.toolCallId,
+          (b) => b.kind === 'tool' && b.toolCallId === event.toolCallId
         );
         if (toolBlock?.kind === 'tool') {
           toolBlock.result = event.result;
@@ -421,7 +436,11 @@ class AgentSessionService {
       case 'agent_end': {
         const cur = this.piCurrentMsg.get(piSessionKey);
         if (cur && cur.blocks.length > 0) {
-          history.push({ id: cur.id, role: 'assistant', blocks: cur.blocks as HistoryMessageBlock[] });
+          history.push({
+            id: cur.id,
+            role: 'assistant',
+            blocks: cur.blocks as HistoryMessageBlock[],
+          });
           this.piHistoryCache.set(piSessionKey, history);
           this.piCurrentMsg.delete(piSessionKey);
           this.savePiHistory(piSessionKey, taskId, conversationId);
