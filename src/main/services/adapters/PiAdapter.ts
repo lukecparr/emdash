@@ -191,12 +191,15 @@ export class PiAdapter extends EventEmitter {
 
       if (eventType === 'toolcall_start') {
         log.debug('[PiAdapter] toolcall_start raw:', JSON.stringify(assistantMessageEvent));
-        // Tool info is nested inside partial.content
+        // Tool info is at partial.content[contentIndex]
+        const contentIndex = assistantMessageEvent.contentIndex as number | undefined;
         const partial = assistantMessageEvent.partial as Record<string, unknown> | undefined;
-        const content = partial?.content as Record<string, unknown> | undefined;
-        const toolName = (content?.name as string) ?? 'unknown';
-        const toolCallId = (content?.id as string) ?? '';
-        const args = content?.input ?? {};
+        const contentArray = partial?.content as Array<Record<string, unknown>> | undefined;
+        const toolContent =
+          contentArray && typeof contentIndex === 'number' ? contentArray[contentIndex] : undefined;
+        const toolName = (toolContent?.name as string) ?? 'unknown';
+        const toolCallId = (toolContent?.id as string) ?? '';
+        const args = toolContent?.arguments ?? toolContent?.input ?? {};
         this.emit('event', {
           type: 'tool_call_start',
           toolName,
@@ -206,14 +209,72 @@ export class PiAdapter extends EventEmitter {
         return;
       }
 
-      // text_start, text_end, toolcall_delta, toolcall_end — currently no-ops
+      if (eventType === 'toolcall_end') {
+        // toolcall_end has the complete ToolCall object — update args
+        const toolCall = assistantMessageEvent.toolCall as Record<string, unknown> | undefined;
+        if (toolCall) {
+          const toolName = (toolCall.name as string) ?? 'unknown';
+          const toolCallId = (toolCall.id as string) ?? '';
+          const args = toolCall.arguments ?? {};
+          this.emit('event', {
+            type: 'tool_call_start',
+            toolName,
+            toolCallId,
+            args,
+          } satisfies NormalizedEvent);
+        }
+        return;
+      }
+
+      // text_start, text_end, toolcall_delta — currently no-ops
       log.debug('[PiAdapter] unhandled message_update subtype:', eventType);
       return;
     }
 
+    if (msgType === 'tool_execution_start') {
+      // tool_execution_start has complete tool info — re-emit to update args
+      const toolCallId = (obj.toolCallId as string) ?? '';
+      const toolName = (obj.toolName as string) ?? 'unknown';
+      const args = obj.args ?? {};
+      this.emit('event', {
+        type: 'tool_call_start',
+        toolName,
+        toolCallId,
+        args,
+      } satisfies NormalizedEvent);
+      return;
+    }
+
+    if (msgType === 'tool_execution_update') {
+      // Partial result streaming during tool execution
+      const toolCallId = (obj.toolCallId as string) ?? '';
+      const partialResult = obj.partialResult as Record<string, unknown> | undefined;
+      if (partialResult) {
+        const rawContent = partialResult.content;
+        let contentText = '';
+        if (typeof rawContent === 'string') {
+          contentText = rawContent;
+        } else if (Array.isArray(rawContent)) {
+          contentText = (rawContent as Array<Record<string, unknown>>)
+            .map((c) => (typeof c.text === 'string' ? c.text : JSON.stringify(c)))
+            .join('\n');
+        }
+        this.emit('event', {
+          type: 'tool_result',
+          toolCallId,
+          result: { type: 'other', content: contentText, isError: false },
+        } satisfies NormalizedEvent);
+      }
+      return;
+    }
+
     if (msgType === 'tool_execution_end') {
-      const toolCallId = (obj.tool_call_id as string) ?? (obj.toolCallId as string) ?? '';
-      const rawContent = obj.content;
+      const toolCallId = (obj.toolCallId as string) ?? (obj.tool_call_id as string) ?? '';
+      const isError = (obj.isError as boolean) ?? (obj.is_error as boolean) ?? false;
+
+      // result is { content: Array<{ type: "text", text: string }>, details?: ... }
+      const resultObj = obj.result as Record<string, unknown> | undefined;
+      const rawContent = resultObj?.content ?? obj.content;
       let contentText = '';
       if (typeof rawContent === 'string') {
         contentText = rawContent;
@@ -222,7 +283,6 @@ export class PiAdapter extends EventEmitter {
           .map((c) => (typeof c.text === 'string' ? c.text : JSON.stringify(c)))
           .join('\n');
       }
-      const isError = (obj.is_error as boolean) ?? false;
       this.emit('event', {
         type: 'tool_result',
         toolCallId,

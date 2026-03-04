@@ -168,6 +168,31 @@ const UnifiedChatPanel: React.FC<UnifiedChatPanelProps> = ({
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           if (!last || last.role !== 'assistant') return prev;
+
+          // Check if a tool block with this ID already exists — update it instead
+          const existingIndex = last.blocks.findIndex(
+            (b) => b.kind === 'tool' && b.toolCallId === event.toolCallId
+          );
+
+          if (existingIndex >= 0) {
+            // Update existing tool block with complete info
+            const blocks = last.blocks.map((b, i) => {
+              if (i === existingIndex && b.kind === 'tool') {
+                return {
+                  ...b,
+                  toolName: event.toolName !== 'unknown' ? event.toolName : b.toolName,
+                  args:
+                    event.args && Object.keys(event.args as object).length > 0
+                      ? event.args
+                      : b.args,
+                };
+              }
+              return b;
+            });
+            return [...prev.slice(0, -1), { ...last, blocks }];
+          }
+
+          // New tool block
           const blocks: MessageBlock[] = [
             ...last.blocks,
             {
