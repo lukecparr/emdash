@@ -266,6 +266,65 @@ describe('PiAdapter sendMessage', () => {
       JSON.stringify({ type: 'prompt', message: 'hello world' }) + '\n'
     );
   });
+
+  it('writes JSON without images field when no images provided', () => {
+    const { adapter } = createAdapter();
+
+    adapter.sendMessage('text only');
+
+    const { stdin } = getMocks();
+    const written = stdin.write.mock.calls[0][0] as string;
+    const parsed = JSON.parse(written.trim());
+    expect(parsed).toEqual({ type: 'prompt', message: 'text only' });
+    expect(parsed).not.toHaveProperty('images');
+  });
+
+  it('writes JSON without images field when empty array provided', () => {
+    const { adapter } = createAdapter();
+
+    adapter.sendMessage('text only', []);
+
+    const { stdin } = getMocks();
+    const written = stdin.write.mock.calls[0][0] as string;
+    const parsed = JSON.parse(written.trim());
+    expect(parsed).toEqual({ type: 'prompt', message: 'text only' });
+    expect(parsed).not.toHaveProperty('images');
+  });
+
+  it('includes images in RPC prompt when provided', () => {
+    const { adapter } = createAdapter();
+
+    adapter.sendMessage('describe this', [{ data: 'iVBORw0KGgo=', mimeType: 'image/png' }]);
+
+    const { stdin } = getMocks();
+    const written = stdin.write.mock.calls[0][0] as string;
+    const parsed = JSON.parse(written.trim());
+    expect(parsed).toEqual({
+      type: 'prompt',
+      message: 'describe this',
+      images: [{ type: 'image', data: 'iVBORw0KGgo=', mimeType: 'image/png' }],
+    });
+  });
+
+  it('includes multiple images in RPC prompt', () => {
+    const { adapter } = createAdapter();
+
+    adapter.sendMessage('compare these', [
+      { data: 'png-data-1', mimeType: 'image/png' },
+      { data: 'jpeg-data-2', mimeType: 'image/jpeg' },
+    ]);
+
+    const { stdin } = getMocks();
+    const written = stdin.write.mock.calls[0][0] as string;
+    const parsed = JSON.parse(written.trim());
+    expect(parsed.images).toHaveLength(2);
+    expect(parsed.images[0]).toEqual({ type: 'image', data: 'png-data-1', mimeType: 'image/png' });
+    expect(parsed.images[1]).toEqual({
+      type: 'image',
+      data: 'jpeg-data-2',
+      mimeType: 'image/jpeg',
+    });
+  });
 });
 
 describe('PiAdapter abort', () => {

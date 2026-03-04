@@ -33,9 +33,20 @@ export function registerAgentSessionIpc(): void {
 
   ipcMain.handle(
     'agentSession:prompt',
-    async (_event, { sessionId, message }: { sessionId: string; message: string }) => {
+    async (
+      _event,
+      {
+        sessionId,
+        message,
+        images,
+      }: {
+        sessionId: string;
+        message: string;
+        images?: Array<{ data: string; mimeType: string }>;
+      }
+    ) => {
       try {
-        agentSessionService.sendMessage(sessionId, message);
+        agentSessionService.sendMessage(sessionId, message, images);
         return { ok: true };
       } catch (err) {
         const message2 = err instanceof Error ? err.message : String(err);

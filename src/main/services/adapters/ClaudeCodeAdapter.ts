@@ -116,7 +116,7 @@ export class ClaudeCodeAdapter extends EventEmitter {
     });
   }
 
-  sendMessage(text: string): void {
+  sendMessage(text: string, _images?: Array<{ data: string; mimeType: string }>): void {
     if (!this.proc?.stdin) {
       log.warn('[ClaudeCodeAdapter] Cannot sendMessage: no stdin');
       return;

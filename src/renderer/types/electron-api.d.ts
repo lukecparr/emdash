@@ -1319,6 +1319,7 @@ declare global {
       agentSessionPrompt: (opts: {
         sessionId: string;
         message: string;
+        images?: Array<{ data: string; mimeType: string }>;
       }) => Promise<{ ok: boolean; error?: string }>;
       agentSessionAbort: (opts: { sessionId: string }) => Promise<{ ok: boolean; error?: string }>;
       agentSessionDestroy: (opts: {
@@ -1927,6 +1928,7 @@ export interface ElectronAPI {
   agentSessionPrompt: (opts: {
     sessionId: string;
     message: string;
+    images?: Array<{ data: string; mimeType: string }>;
   }) => Promise<{ ok: boolean; error?: string }>;
   agentSessionAbort: (opts: { sessionId: string }) => Promise<{ ok: boolean; error?: string }>;
   agentSessionDestroy: (opts: { sessionId: string }) => Promise<{ ok: boolean; error?: string }>;

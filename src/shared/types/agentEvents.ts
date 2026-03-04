@@ -13,8 +13,16 @@ export type ToolResult = {
   isError?: boolean;
 };
 
+export type ImageAttachment = {
+  /** base64-encoded image data */
+  data: string;
+  /** MIME type, e.g. "image/png", "image/jpeg" */
+  mimeType: string;
+};
+
 export type HistoryMessageBlock =
   | { kind: 'text'; text: string }
+  | { kind: 'image'; data: string; mimeType: string }
   | { kind: 'thinking'; text: string }
   | { kind: 'tool'; toolName: string; toolCallId: string; args: unknown; result?: ToolResult };
 

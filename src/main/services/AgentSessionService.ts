@@ -140,7 +140,7 @@ export interface CreateSessionOptions {
   resume?: boolean;
 }
 
-class AgentSessionService {
+export class AgentSessionService {
   private sessions = new Map<string, ClaudeCodeAdapter | PiAdapter>();
   // Maps internal sessionId → provider-specific key so destroySession can look it up
   private providerSessionKeys = new Map<string, string>();
@@ -261,7 +261,11 @@ class AgentSessionService {
     throw new Error(`Provider '${providerId}' does not support streaming-json integration mode`);
   }
 
-  sendMessage(sessionId: string, text: string): void {
+  sendMessage(
+    sessionId: string,
+    text: string,
+    images?: Array<{ data: string; mimeType: string }>
+  ): void {
     const adapter = this.sessions.get(sessionId);
     if (!adapter) {
       log.warn(`[AgentSessionService] sendMessage: no session for id=${sessionId}`);
@@ -275,17 +279,24 @@ class AgentSessionService {
       if (meta) {
         const { taskId, conversationId } = meta;
         const history = this.piHistoryCache.get(providerKey) ?? [];
+        const blocks: HistoryMessageBlock[] = [];
+        if (images?.length) {
+          for (const img of images) {
+            blocks.push({ kind: 'image', data: img.data, mimeType: img.mimeType });
+          }
+        }
+        blocks.push({ kind: 'text', text });
         history.push({
           id: `pi-user-${Date.now().toString(36)}`,
           role: 'user',
-          blocks: [{ kind: 'text', text }],
+          blocks,
         });
         this.piHistoryCache.set(providerKey, history);
         this.savePiHistory(providerKey, taskId, conversationId);
       }
     }
 
-    adapter.sendMessage(text);
+    adapter.sendMessage(text, images);
   }
 
   abortSession(sessionId: string): void {

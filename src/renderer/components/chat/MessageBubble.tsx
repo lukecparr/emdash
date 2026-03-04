@@ -6,6 +6,7 @@ import type { ToolResult } from '@shared/types/agentEvents';
 
 export type MessageBlock =
   | { kind: 'text'; text: string }
+  | { kind: 'image'; data: string; mimeType: string }
   | { kind: 'thinking'; text: string }
   | { kind: 'tool'; toolName: string; toolCallId: string; args: unknown; result?: ToolResult };
 
@@ -39,14 +40,29 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, className }) => 
   const isUser = message.role === 'user';
 
   if (isUser) {
+    const textContent = message.blocks
+      .filter((b) => b.kind === 'text')
+      .map((b) => (b.kind === 'text' ? b.text : ''))
+      .join('');
+    const imageBlocks = message.blocks.filter((b) => b.kind === 'image');
+
     return (
       <div className={cn('flex justify-end py-1', className)}>
-        <p className="max-w-[80%] whitespace-pre-wrap text-right text-sm text-foreground/80">
-          {message.blocks
-            .filter((b) => b.kind === 'text')
-            .map((b) => (b.kind === 'text' ? b.text : ''))
-            .join('')}
-        </p>
+        <div className="max-w-[80%] space-y-2 text-right">
+          {imageBlocks.map((block, i) =>
+            block.kind === 'image' ? (
+              <img
+                key={`img-${i}`}
+                src={`data:${block.mimeType};base64,${block.data}`}
+                alt="Pasted image"
+                className="ml-auto max-h-64 max-w-full rounded-md border border-border object-contain"
+              />
+            ) : null
+          )}
+          {textContent && (
+            <p className="whitespace-pre-wrap text-sm text-foreground/80">{textContent}</p>
+          )}
+        </div>
       </div>
     );
   }
