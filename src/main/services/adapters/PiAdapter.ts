@@ -80,12 +80,20 @@ export class PiAdapter extends EventEmitter {
     });
   }
 
-  sendMessage(text: string): void {
+  sendMessage(text: string, images?: Array<{ data: string; mimeType: string }>): void {
     if (!this.proc?.stdin) {
       log.warn('[PiAdapter] Cannot sendMessage: no stdin');
       return;
     }
-    const payload = JSON.stringify({ type: 'prompt', message: text });
+    const cmd: Record<string, unknown> = { type: 'prompt', message: text };
+    if (images?.length) {
+      cmd.images = images.map((img) => ({
+        type: 'image',
+        data: img.data,
+        mimeType: img.mimeType,
+      }));
+    }
+    const payload = JSON.stringify(cmd);
     this.proc.stdin.write(payload + '\n');
   }
 

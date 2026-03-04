@@ -144,8 +144,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     env?: Record<string, string>;
     resume?: boolean;
   }) => ipcRenderer.invoke('agentSession:create', opts),
-  agentSessionPrompt: (opts: { sessionId: string; message: string }) =>
-    ipcRenderer.invoke('agentSession:prompt', opts),
+  agentSessionPrompt: (opts: {
+    sessionId: string;
+    message: string;
+    images?: Array<{ data: string; mimeType: string }>;
+  }) => ipcRenderer.invoke('agentSession:prompt', opts),
   agentSessionAbort: (opts: { sessionId: string }) =>
     ipcRenderer.invoke('agentSession:abort', opts),
   agentSessionDestroy: (opts: { sessionId: string }) =>
