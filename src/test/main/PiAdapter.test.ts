@@ -130,12 +130,16 @@ describe('PiAdapter event mapping', () => {
       type: 'message_update',
       assistantMessageEvent: {
         type: 'toolcall_start',
+        contentIndex: 0,
         partial: {
-          content: {
-            id: 'tc-123',
-            name: 'bash',
-            input: { command: 'ls' },
-          },
+          content: [
+            {
+              type: 'toolCall',
+              id: 'tc-123',
+              name: 'bash',
+              arguments: { command: 'ls' },
+            },
+          ],
         },
       },
     });
@@ -148,20 +152,102 @@ describe('PiAdapter event mapping', () => {
     });
   });
 
-  it('maps tool_execution_end to tool_result', () => {
+  it('maps toolcall_end to tool_call_start with complete args', () => {
+    const { events, feed } = createAdapter();
+
+    feed({
+      type: 'message_update',
+      assistantMessageEvent: {
+        type: 'toolcall_end',
+        contentIndex: 0,
+        toolCall: {
+          id: 'tc-456',
+          name: 'read',
+          arguments: { path: 'src/main.ts', limit: 50 },
+        },
+      },
+    });
+
+    expect(events).toContainEqual({
+      type: 'tool_call_start',
+      toolName: 'read',
+      toolCallId: 'tc-456',
+      args: { path: 'src/main.ts', limit: 50 },
+    });
+  });
+
+  it('maps tool_execution_start to tool_call_start', () => {
+    const { events, feed } = createAdapter();
+
+    feed({
+      type: 'tool_execution_start',
+      toolCallId: 'tc-789',
+      toolName: 'edit',
+      args: { path: 'foo.ts', oldText: 'a', newText: 'b' },
+    });
+
+    expect(events).toContainEqual({
+      type: 'tool_call_start',
+      toolName: 'edit',
+      toolCallId: 'tc-789',
+      args: { path: 'foo.ts', oldText: 'a', newText: 'b' },
+    });
+  });
+
+  it('maps tool_execution_update to tool_result', () => {
+    const { events, feed } = createAdapter();
+
+    feed({
+      type: 'tool_execution_update',
+      toolCallId: 'tc-789',
+      toolName: 'bash',
+      args: { command: 'npm test' },
+      partialResult: {
+        content: [{ type: 'text', text: 'PASS test1' }],
+      },
+    });
+
+    expect(events).toContainEqual({
+      type: 'tool_result',
+      toolCallId: 'tc-789',
+      result: { type: 'other', content: 'PASS test1', isError: false },
+    });
+  });
+
+  it('maps tool_execution_end to tool_result (result.content array)', () => {
     const { events, feed } = createAdapter();
 
     feed({
       type: 'tool_execution_end',
-      tool_call_id: 'tc-123',
-      content: 'file contents here',
-      is_error: false,
+      toolCallId: 'tc-123',
+      toolName: 'bash',
+      result: {
+        content: [{ type: 'text', text: 'file contents here' }],
+      },
+      isError: false,
     });
 
     expect(events).toContainEqual({
       type: 'tool_result',
       toolCallId: 'tc-123',
       result: { type: 'other', content: 'file contents here', isError: false },
+    });
+  });
+
+  it('maps tool_execution_end with legacy flat content fallback', () => {
+    const { events, feed } = createAdapter();
+
+    feed({
+      type: 'tool_execution_end',
+      tool_call_id: 'tc-456',
+      content: 'legacy output',
+      is_error: true,
+    });
+
+    expect(events).toContainEqual({
+      type: 'tool_result',
+      toolCallId: 'tc-456',
+      result: { type: 'other', content: 'legacy output', isError: true },
     });
   });
 

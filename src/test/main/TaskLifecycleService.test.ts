@@ -269,7 +269,11 @@ describe('TaskLifecycleService', () => {
     const projectPath = '/tmp/project';
 
     const setupPromise = taskLifecycleService.runSetup(taskId, taskPath, projectPath);
-    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    // Wait until spawn has been called (meaning the error listener is registered)
+    // rather than relying on a fixed timeout which can be flaky in CI.
+    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalled(), { timeout: 500 });
+
     child.emit('error', new Error('spawn failed'));
     child.emit('exit', 0);
 
@@ -299,7 +303,9 @@ describe('TaskLifecycleService', () => {
     const projectPath = '/tmp/project';
 
     void taskLifecycleService.runSetup(taskId, taskPath, projectPath);
-    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    // Wait until spawn has been called (meaning the child is tracked)
+    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalled(), { timeout: 500 });
 
     expect(serviceAny.finiteProcesses.has(taskId)).toBe(true);
     taskLifecycleService.clearTask(taskId);
