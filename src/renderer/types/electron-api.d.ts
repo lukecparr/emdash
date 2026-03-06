@@ -141,6 +141,9 @@ declare global {
           interface?: {
             autoRightSidebarBehavior?: boolean;
             theme?: 'light' | 'dark' | 'dark-black' | 'system';
+            accentColor?: { id: string; customHsl?: string };
+            palette?: string;
+            customPalette?: Record<string, string>;
           };
           terminal?: {
             fontFamily: string;
@@ -223,6 +226,9 @@ declare global {
           interface?: {
             autoRightSidebarBehavior?: boolean;
             theme?: 'light' | 'dark' | 'dark-black' | 'system';
+            accentColor?: { id: string; customHsl?: string };
+            palette?: string;
+            customPalette?: Record<string, string>;
           };
           terminal?: {
             fontFamily?: string;
@@ -304,6 +310,9 @@ declare global {
           interface?: {
             autoRightSidebarBehavior?: boolean;
             theme?: 'light' | 'dark' | 'dark-black' | 'system';
+            accentColor?: { id: string; customHsl?: string };
+            palette?: string;
+            customPalette?: Record<string, string>;
           };
           terminal?: {
             fontFamily: string;

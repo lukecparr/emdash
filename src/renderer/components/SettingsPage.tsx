@@ -16,6 +16,8 @@ import IntegrationsCard from './IntegrationsCard';
 import Context7SettingsCard from './Context7SettingsCard';
 import RepositorySettingsCard from './RepositorySettingsCard';
 import ThemeCard from './ThemeCard';
+import ThemeCustomizerCard from './ThemeCustomizerCard';
+import CustomThemeEditor from './CustomThemeEditor';
 import KeyboardSettingsCard from './KeyboardSettingsCard';
 import RightSidebarSettingsCard from './RightSidebarSettingsCard';
 import BrowserPreviewSettingsCard from './BrowserPreviewSettingsCard';
@@ -230,6 +232,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ initialTab, onClose }) => {
       description: 'Customize the appearance and behavior of the app.',
       sections: [
         { component: <ThemeCard /> },
+        { component: <ThemeCustomizerCard /> },
+        { component: <CustomThemeEditor /> },
         { component: <TerminalSettingsCard /> },
         { title: 'Keyboard shortcuts', component: <KeyboardSettingsCard /> },
         {

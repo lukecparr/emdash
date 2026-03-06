@@ -9,6 +9,8 @@ import IntegrationsCard from './IntegrationsCard';
 import CliAgentsList, { BASE_CLI_AGENTS } from './CliAgentsList';
 import TelemetryCard from './TelemetryCard';
 import ThemeCard from './ThemeCard';
+import ThemeCustomizerCard from './ThemeCustomizerCard';
+import CustomThemeEditor from './CustomThemeEditor';
 import BrowserPreviewSettingsCard from './BrowserPreviewSettingsCard';
 import NotificationSettingsCard from './NotificationSettingsCard';
 import RightSidebarSettingsCard from './RightSidebarSettingsCard';
@@ -220,6 +222,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
         description: '',
         sections: [
           { title: 'Theme', render: () => <ThemeCard /> },
+          { title: 'Accent color', render: () => <ThemeCustomizerCard /> },
+          { title: 'Custom colors', render: () => <CustomThemeEditor /> },
           { title: 'Keyboard shortcuts', render: () => <KeyboardSettingsCard /> },
           { title: 'Notifications', render: () => <NotificationSettingsCard /> },
           { title: 'Right sidebar', render: () => <RightSidebarSettingsCard /> },

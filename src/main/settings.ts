@@ -5,6 +5,15 @@ import { homedir } from 'os';
 import type { ProviderId } from '@shared/providers/registry';
 import { isValidProviderId } from '@shared/providers/registry';
 import { isValidOpenInAppId, type OpenInAppId } from '@shared/openInApps';
+import type { AccentColorSetting } from '@shared/themeColors';
+import {
+  isValidAccentId,
+  isValidPaletteId,
+  isValidHslString,
+  sanitizeCustomPalette,
+  DEFAULT_ACCENT_ID,
+  DEFAULT_PALETTE_ID,
+} from '@shared/themeColors';
 
 const DEFAULT_PROVIDER_ID: ProviderId = 'claude';
 const IS_MAC = process.platform === 'darwin';
@@ -47,6 +56,9 @@ export interface KeyboardSettings {
 export interface InterfaceSettings {
   autoRightSidebarBehavior?: boolean;
   theme?: 'light' | 'dark' | 'dark-black' | 'system';
+  accentColor?: AccentColorSetting;
+  palette?: string; // PalettePreset id or 'default'
+  customPalette?: Record<string, string>; // editor-key → HSL string overrides
 }
 
 /**
@@ -468,6 +480,24 @@ function normalizeSettings(input: AppSettings): AppSettings {
       ? iface.theme
       : DEFAULT_SETTINGS.interface!.theme,
   };
+
+  // Accent color
+  const rawAccent = iface?.accentColor;
+  if (rawAccent && typeof rawAccent === 'object' && isValidAccentId(rawAccent.id)) {
+    const accent: AccentColorSetting = { id: rawAccent.id };
+    if (rawAccent.id === 'custom' && isValidHslString(rawAccent.customHsl)) {
+      accent.customHsl = rawAccent.customHsl;
+    }
+    out.interface!.accentColor = accent;
+  } else {
+    out.interface!.accentColor = { id: DEFAULT_ACCENT_ID };
+  }
+
+  // Palette
+  out.interface!.palette = isValidPaletteId(iface?.palette) ? iface.palette : DEFAULT_PALETTE_ID;
+
+  // Custom palette overrides
+  out.interface!.customPalette = sanitizeCustomPalette(iface?.customPalette);
 
   // Provider custom configs
   const providerConfigs = (input as any)?.providerConfigs || {};
