@@ -1,19 +1,11 @@
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { TerminalPane } from './TerminalPane';
-import { Bot, Plus, Play, Square, X } from 'lucide-react';
+import { Bot, Plus, Play, Square, ChevronDown, ChevronRight } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useTaskTerminals } from '@/lib/taskTerminalsStore';
 import { cn } from '@/lib/utils';
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from './ui/tooltip';
 import { Button } from './ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from './ui/select';
 import type { Agent } from '../types';
 import { getTaskEnvVars } from '@shared/task/envVars';
 import { shouldDisablePlay } from '../lib/lifecycleUi';
@@ -40,9 +32,11 @@ interface Props {
 }
 
 type LifecyclePhaseStatus = 'idle' | 'running' | 'succeeded' | 'failed';
-type SelectedMode = 'task' | 'global' | 'lifecycle';
 type LifecyclePhase = 'setup' | 'run' | 'teardown';
 type LifecycleLogs = Record<LifecyclePhase, string[]>;
+
+/** Which top-level tab is selected */
+type TabId = 'setup' | 'run' | 'terminal';
 
 const TaskTerminalPanelComponent: React.FC<Props> = ({
   task,
@@ -63,19 +57,17 @@ const TaskTerminalPanelComponent: React.FC<Props> = ({
   const globalKey = task?.path ? `global::${task.path}` : `global::${projectPath}`;
   const globalTerminals = useTaskTerminals(globalKey, projectPath, { defaultCwd: projectPath });
 
-  const [selectedValue, setSelectedValue] = useState<string>(() => {
-    if (task && taskTerminals.activeTerminalId) {
-      return `task::${taskTerminals.activeTerminalId}`;
-    }
-    if (globalTerminals.activeTerminalId) {
-      return `global::${globalTerminals.activeTerminalId}`;
-    }
-    return '';
-  });
+  const [activeTab, setActiveTab] = useState<TabId>('setup');
+  const [collapsed, setCollapsed] = useState(false);
+
+  // Track which terminal is active within the terminal tab
+  const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null);
+  // Track whether the active terminal is from 'task' or 'global' scope
+  const [terminalScope, setTerminalScope] = useState<'task' | 'global'>('task');
 
   const [runStatus, setRunStatus] = useState<LifecyclePhaseStatus>('idle');
   const [setupStatus, setSetupStatus] = useState<LifecyclePhaseStatus>('idle');
-  const [teardownStatus, setTeardownStatus] = useState<LifecyclePhaseStatus>('idle');
+  const [_teardownStatus, setTeardownStatus] = useState<LifecyclePhaseStatus>('idle');
   const [runActionBusy, setRunActionBusy] = useState(false);
   const activeTaskIdRef = useRef<string | null>(task?.id ?? null);
   const [lifecycleLogs, setLifecycleLogs] = useState<LifecycleLogs>({
@@ -83,16 +75,6 @@ const TaskTerminalPanelComponent: React.FC<Props> = ({
     run: [],
     teardown: [],
   });
-
-  const parseValue = (value: string): { mode: SelectedMode; id: string } | null => {
-    const match = value.match(/^(task|global|lifecycle)::(.+)$/);
-    if (!match) return null;
-    return { mode: match[1] as SelectedMode, id: match[2] };
-  };
-
-  const parsed = selectedValue ? parseValue(selectedValue) : null;
-  const selectedLifecycle =
-    parsed?.mode === 'lifecycle' ? (parsed.id as LifecyclePhase) : (null as LifecyclePhase | null);
 
   const taskEnv = useMemo(() => {
     if (!task || !task.path || !projectPath) return undefined;
@@ -109,6 +91,37 @@ const TaskTerminalPanelComponent: React.FC<Props> = ({
   useEffect(() => {
     activeTaskIdRef.current = task?.id ?? null;
   }, [task?.id]);
+
+  // Sync active terminal when task terminals or global terminals change
+  useEffect(() => {
+    if (task && taskTerminals.terminals.length > 0) {
+      if (
+        !activeTerminalId ||
+        (terminalScope === 'task' &&
+          !taskTerminals.terminals.some((t) => t.id === activeTerminalId))
+      ) {
+        setActiveTerminalId(taskTerminals.terminals[0].id);
+        setTerminalScope('task');
+      }
+    } else if (globalTerminals.terminals.length > 0) {
+      if (
+        !activeTerminalId ||
+        (terminalScope === 'global' &&
+          !globalTerminals.terminals.some((t) => t.id === activeTerminalId))
+      ) {
+        setActiveTerminalId(globalTerminals.terminals[0].id);
+        setTerminalScope('global');
+      }
+    }
+  }, [task, taskTerminals.terminals, globalTerminals.terminals, activeTerminalId, terminalScope]);
+
+  // When no task, switch to terminal tab and global scope
+  useEffect(() => {
+    if (!task) {
+      setActiveTab('terminal');
+      setTerminalScope('global');
+    }
+  }, [task]);
 
   const refreshLifecycleState = useCallback(async () => {
     const taskId = task?.id;
@@ -234,80 +247,19 @@ const TaskTerminalPanelComponent: React.FC<Props> = ({
     };
   }, [task?.id, refreshLifecycleState]);
 
-  // Auto-switch dropdown to Run when the run phase starts.
+  // Auto-switch to Setup tab when setup starts running
   useEffect(() => {
-    if (runStatus === 'running' && selectedLifecycle !== 'run') {
-      setSelectedValue('lifecycle::run');
+    if (setupStatus === 'running') {
+      setActiveTab('setup');
     }
-  }, [runStatus, selectedLifecycle]);
+  }, [setupStatus]);
 
-  // Sync selection when store active terminal changes; don't override lifecycle selection.
+  // Auto-switch to Run tab when the run phase starts
   useEffect(() => {
-    if (!taskTerminals.activeTerminalId) return;
-    if (!selectedValue || parsed?.mode === 'task') {
-      const newValue = `task::${taskTerminals.activeTerminalId}`;
-      if (selectedValue !== newValue) setSelectedValue(newValue);
+    if (runStatus === 'running') {
+      setActiveTab('run');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [taskTerminals.activeTerminalId]);
-
-  useEffect(() => {
-    if (!globalTerminals.activeTerminalId) return;
-    if (!selectedValue || parsed?.mode === 'global') {
-      const newValue = `global::${globalTerminals.activeTerminalId}`;
-      if (selectedValue !== newValue) setSelectedValue(newValue);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [globalTerminals.activeTerminalId]);
-
-  useEffect(() => {
-    if (!selectedValue) {
-      if (task && taskTerminals.terminals.length > 0) {
-        setSelectedValue(`task::${taskTerminals.terminals[0].id}`);
-      } else if (globalTerminals.terminals.length > 0) {
-        setSelectedValue(`global::${globalTerminals.terminals[0].id}`);
-      }
-      return;
-    }
-
-    const p = parseValue(selectedValue);
-    if (!p || p.mode === 'lifecycle') return;
-
-    // When there's no task, always prefer global terminal regardless of current mode
-    if (!task && p.mode === 'task') {
-      if (globalTerminals.terminals.length > 0) {
-        setSelectedValue(`global::${globalTerminals.terminals[0].id}`);
-      }
-      return;
-    }
-
-    const terminals = p.mode === 'task' ? taskTerminals.terminals : globalTerminals.terminals;
-    const exists = terminals.some((t) => t.id === p.id);
-    if (exists) return;
-
-    // When a task is active, prefer its worktree terminal
-    if (task && taskTerminals.terminals.length > 0) {
-      setSelectedValue(`task::${taskTerminals.terminals[0].id}`);
-    } else if (globalTerminals.terminals.length > 0) {
-      setSelectedValue(`global::${globalTerminals.terminals[0].id}`);
-    } else {
-      setSelectedValue('');
-    }
-  }, [selectedValue, taskTerminals.terminals, globalTerminals.terminals, task]);
-
-  const handleSelectChange = (value: string) => {
-    setSelectedValue(value);
-    const p = parseValue(value);
-    if (!p) return;
-    if (p.mode === 'task') {
-      taskTerminals.setActiveTerminal(p.id);
-    } else if (p.mode === 'global') {
-      globalTerminals.setActiveTerminal(p.id);
-    }
-  };
-
-  const activeTerminalId = parsed?.mode === 'lifecycle' ? null : (parsed?.id ?? null);
-  const totalTerminals = taskTerminals.terminals.length + globalTerminals.terminals.length;
+  }, [runStatus]);
 
   const canStartRun =
     !!task &&
@@ -317,49 +269,51 @@ const TaskTerminalPanelComponent: React.FC<Props> = ({
     setupStatus !== 'running' &&
     setupStatus !== 'failed';
 
-  const isRunSelection = !selectedLifecycle || selectedLifecycle === 'run';
-  const selectedTerminalScope = useMemo(() => {
-    if (parsed?.mode === 'task') return 'WORKTREE';
-    if (parsed?.mode === 'global') return 'GLOBAL';
-    return null;
-  }, [parsed?.mode]);
-
-  const handlePlay = useCallback(async () => {
+  const handleRunStart = useCallback(async () => {
     if (!task || !projectPath) return;
     const api = window.electronAPI as any;
     setRunActionBusy(true);
     try {
-      if (selectedLifecycle === 'setup') {
-        await api.lifecycleSetup?.({
-          taskId: task.id,
-          taskPath: task.path,
+      // If setup hasn't succeeded yet, check whether there's a setup script
+      // and run it first (the backend rejects run when setup is configured
+      // but hasn't completed).
+      if (setupStatus !== 'succeeded') {
+        const scriptRes = await api.lifecycleGetScript?.({
           projectPath,
-          taskName: task.name,
+          phase: 'setup',
         });
-      } else if (selectedLifecycle === 'teardown') {
-        await api.lifecycleTeardown?.({
-          taskId: task.id,
-          taskPath: task.path,
-          projectPath,
-          taskName: task.name,
-        });
-      } else {
-        await api.lifecycleRunStart?.({
-          taskId: task.id,
-          taskPath: task.path,
-          projectPath,
-          taskName: task.name,
-        });
+        if (scriptRes?.success && scriptRes.script) {
+          setActiveTab('setup');
+          const setupRes = await api.lifecycleSetup?.({
+            taskId: task.id,
+            taskPath: task.path,
+            projectPath,
+            taskName: task.name,
+          });
+          if (!setupRes?.success) {
+            console.error('Setup failed, cannot start run:', setupRes?.error);
+            return;
+          }
+          // After setup completes switch to run tab
+          setActiveTab('run');
+        }
       }
+
+      await api.lifecycleRunStart?.({
+        taskId: task.id,
+        taskPath: task.path,
+        projectPath,
+        taskName: task.name,
+      });
     } catch (error) {
-      console.error('Failed lifecycle play action:', error);
+      console.error('Failed lifecycle run start:', error);
     } finally {
       setRunActionBusy(false);
       void refreshLifecycleState();
     }
-  }, [task?.id, task?.name, task?.path, projectPath, selectedLifecycle, refreshLifecycleState]);
+  }, [task?.id, task?.name, task?.path, projectPath, setupStatus, refreshLifecycleState]);
 
-  const handleStop = useCallback(async () => {
+  const handleRunStop = useCallback(async () => {
     if (!task) return;
     const api = window.electronAPI as any;
     setRunActionBusy(true);
@@ -372,6 +326,64 @@ const TaskTerminalPanelComponent: React.FC<Props> = ({
       void refreshLifecycleState();
     }
   }, [task?.id, refreshLifecycleState]);
+
+  const handleSetupPlay = useCallback(async () => {
+    if (!task || !projectPath) return;
+    const api = window.electronAPI as any;
+    setRunActionBusy(true);
+    try {
+      await api.lifecycleSetup?.({
+        taskId: task.id,
+        taskPath: task.path,
+        projectPath,
+        taskName: task.name,
+      });
+    } catch (error) {
+      console.error('Failed lifecycle setup:', error);
+    } finally {
+      setRunActionBusy(false);
+      void refreshLifecycleState();
+    }
+  }, [task?.id, task?.name, task?.path, projectPath, refreshLifecycleState]);
+
+  /** ⌘R / Ctrl+R: toggle run or switch to run tab */
+  const handleRunShortcut = useCallback(() => {
+    if (!task || !projectPath) return;
+    if (runStatus === 'running') {
+      void handleRunStop();
+    } else if (canStartRun) {
+      setActiveTab('run');
+      void handleRunStart();
+    }
+  }, [task, projectPath, runStatus, canStartRun, handleRunStart, handleRunStop]);
+
+  /** Run button click — always triggers run regardless of active tab */
+  const handleRunButtonClick = useCallback(() => {
+    if (runStatus === 'running') {
+      void handleRunStop();
+    } else if (canStartRun) {
+      setActiveTab('run');
+      void handleRunStart();
+    }
+  }, [runStatus, canStartRun, handleRunStart, handleRunStop]);
+
+  // Register ⌘R / Ctrl+R keyboard shortcut
+  useEffect(() => {
+    const isMac =
+      typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const modKey = isMac ? e.metaKey : e.ctrlKey;
+      if (modKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'r') {
+        e.preventDefault();
+        e.stopPropagation();
+        handleRunShortcut();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [handleRunShortcut]);
 
   const [nativeTheme, setNativeTheme] = useState<{
     background?: string;
@@ -469,6 +481,10 @@ const TaskTerminalPanelComponent: React.FC<Props> = ({
     return { ...defaultTheme, ...nativeTheme };
   }, [nativeTheme, defaultTheme]);
 
+  const totalTerminals = taskTerminals.terminals.length + globalTerminals.terminals.length;
+
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+
   if (!task && !projectPath) {
     return (
       <div className={`flex h-full flex-col items-center justify-center bg-muted ${className}`}>
@@ -481,284 +497,285 @@ const TaskTerminalPanelComponent: React.FC<Props> = ({
     );
   }
 
+  const runButtonDisabled = shouldDisablePlay({
+    runActionBusy,
+    hasProjectPath: !!projectPath,
+    isRunSelection: true,
+    canStartRun,
+  });
+
+  const tabs: { id: TabId; label: string }[] = task
+    ? [
+        { id: 'setup', label: 'Setup' },
+        { id: 'run', label: 'Run' },
+        { id: 'terminal', label: 'Terminal' },
+      ]
+    : [{ id: 'terminal', label: 'Terminal' }];
+
   return (
     <div className={cn('flex h-full min-w-0 flex-col bg-card', className)}>
-      <div className="flex items-center gap-2 border-b border-border bg-muted px-2 py-1.5 dark:bg-background">
-        <Select value={selectedValue} onValueChange={handleSelectChange}>
-          <SelectTrigger className="h-7 min-w-0 flex-1 justify-between border-none bg-transparent px-2 text-left text-xs shadow-none">
-            <span className="flex min-w-0 flex-1 items-center">
-              <span className="mr-2 inline-flex w-4 shrink-0 justify-center text-[11px] leading-none text-muted-foreground/90">
-                {'>_'}
-              </span>
-              <SelectValue placeholder="Select target" />
-            </span>
-          </SelectTrigger>
-          <SelectContent>
-            {task && (
-              <SelectGroup>
-                <div className="flex items-center justify-between px-2 py-1.5">
-                  <span className="text-[10px] font-semibold text-muted-foreground">Worktree</span>
-                  <button
-                    type="button"
-                    className="flex h-4 w-4 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      void (async () => {
-                        const { captureTelemetry } = await import('../lib/telemetryClient');
-                        captureTelemetry('terminal_new_terminal_created', { scope: 'task' });
-                      })();
-                      taskTerminals.createTerminal({ cwd: task?.path });
-                    }}
-                    title="New worktree terminal"
-                  >
-                    <Plus className="h-3 w-3" />
-                  </button>
-                </div>
-                {taskTerminals.terminals.map((terminal) => (
-                  <SelectItem
-                    key={`task::${terminal.id}`}
-                    value={`task::${terminal.id}`}
-                    className="text-xs"
-                  >
-                    {terminal.title}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            )}
+      {/* Tab bar header */}
+      <div className="flex items-center border-b border-border bg-muted dark:bg-background">
+        {/* Collapse/expand toggle */}
+        <button
+          type="button"
+          onClick={() => setCollapsed((c) => !c)}
+          className="flex h-full shrink-0 items-center px-2 text-muted-foreground hover:text-foreground"
+          title={collapsed ? 'Expand terminal panel' : 'Collapse terminal panel'}
+        >
+          {collapsed ? (
+            <ChevronRight className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronDown className="h-3.5 w-3.5" />
+          )}
+        </button>
 
-            {projectPath && (
-              <SelectGroup>
-                <div className="flex items-center justify-between px-2 py-1.5">
-                  <span className="text-[10px] font-semibold text-muted-foreground">Global</span>
-                  <button
-                    type="button"
-                    className="flex h-4 w-4 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      void (async () => {
-                        const { captureTelemetry } = await import('../lib/telemetryClient');
-                        captureTelemetry('terminal_new_terminal_created', { scope: 'global' });
-                      })();
-                      globalTerminals.createTerminal({ cwd: projectPath });
-                    }}
-                    title="New global terminal"
-                  >
-                    <Plus className="h-3 w-3" />
-                  </button>
-                </div>
-                {globalTerminals.terminals.map((terminal) => (
-                  <SelectItem
-                    key={`global::${terminal.id}`}
-                    value={`global::${terminal.id}`}
-                    className="text-xs"
-                  >
-                    {terminal.title}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            )}
+        {/* Tabs */}
+        <div className="flex min-w-0 items-center gap-0">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                'relative px-3 py-1.5 text-xs font-medium transition-colors',
+                activeTab === tab.id
+                  ? 'text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              {tab.label}
+              {/* Active indicator underline */}
+              {activeTab === tab.id && (
+                <span className="absolute inset-x-0 bottom-0 h-0.5 bg-foreground" />
+              )}
+            </button>
+          ))}
 
-            {task && (
-              <SelectGroup>
-                <div className="px-2 py-1.5">
-                  <span className="text-[10px] font-semibold text-muted-foreground">Lifecycle</span>
-                </div>
-                <SelectItem value="lifecycle::setup" className="text-xs">
-                  Setup
-                </SelectItem>
-                <SelectItem value="lifecycle::run" className="text-xs">
-                  Run
-                </SelectItem>
-                <SelectItem value="lifecycle::teardown" className="text-xs">
-                  Teardown
-                </SelectItem>
-              </SelectGroup>
-            )}
-          </SelectContent>
-        </Select>
-        {selectedTerminalScope && (
-          <span className="shrink-0 rounded bg-zinc-500/15 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-zinc-600 dark:bg-zinc-400/15 dark:text-zinc-400">
-            {selectedTerminalScope}
-          </span>
-        )}
-
-        {task && (
+          {/* + button for new terminal */}
           <TooltipProvider delayDuration={200}>
             <Tooltip>
               <TooltipTrigger asChild>
-                {isRunSelection && runStatus === 'running' ? (
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={handleStop}
-                    disabled={runActionBusy}
-                    className="text-muted-foreground hover:text-foreground"
-                  >
-                    <Square className="h-3.5 w-3.5" />
-                  </Button>
-                ) : (
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={handlePlay}
-                    disabled={shouldDisablePlay({
-                      runActionBusy,
-                      hasProjectPath: !!projectPath,
-                      isRunSelection,
-                      canStartRun,
-                    })}
-                    className="text-muted-foreground hover:text-foreground"
-                  >
-                    <Play className="h-3.5 w-3.5" />
-                  </Button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    void (async () => {
+                      const { captureTelemetry } = await import('../lib/telemetryClient');
+                      captureTelemetry('terminal_new_terminal_created', {
+                        scope: task ? 'task' : 'global',
+                      });
+                    })();
+                    if (task) {
+                      taskTerminals.createTerminal({ cwd: task.path });
+                    } else if (projectPath) {
+                      globalTerminals.createTerminal({ cwd: projectPath });
+                    }
+                    setActiveTab('terminal');
+                  }}
+                  className="flex items-center px-2 py-1.5 text-muted-foreground hover:text-foreground"
+                  title="New terminal"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                <p className="text-xs">
-                  {isRunSelection && runStatus === 'running'
-                    ? 'Stop run script'
-                    : selectedLifecycle === 'setup'
-                      ? 'Run setup script'
-                      : selectedLifecycle === 'teardown'
-                        ? 'Run teardown script'
-                        : setupStatus === 'running'
-                          ? 'Setup is still running'
-                          : setupStatus === 'failed'
-                            ? 'Setup failed'
-                            : 'Start run script'}
-                </p>
+                <p className="text-xs">New terminal</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-        )}
+        </div>
 
-        {(() => {
-          const canDelete =
-            parsed?.mode === 'task'
-              ? taskTerminals.terminals.length > 1
-              : parsed?.mode === 'global'
-                ? globalTerminals.terminals.length > 1
-                : false;
-          return (
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Run button (always visible when task exists) */}
+        {task && (
+          <div className="flex shrink-0 items-center pr-2">
             <TooltipProvider delayDuration={200}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
-                    size="icon-sm"
-                    onClick={() => {
-                      if (activeTerminalId && parsed && canDelete) {
-                        void (async () => {
-                          const { captureTelemetry } = await import('../lib/telemetryClient');
-                          captureTelemetry('terminal_deleted');
-                        })();
-                        if (parsed.mode === 'task') {
-                          taskTerminals.closeTerminal(activeTerminalId);
-                        } else if (parsed.mode === 'global') {
-                          globalTerminals.closeTerminal(activeTerminalId);
-                        }
-                      }
-                    }}
-                    className="ml-auto text-muted-foreground hover:text-destructive"
-                    disabled={!activeTerminalId || !canDelete}
+                    size="sm"
+                    onClick={handleRunButtonClick}
+                    disabled={runStatus !== 'running' && runButtonDisabled}
+                    className={cn(
+                      'h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground',
+                      runStatus === 'running' && 'text-foreground'
+                    )}
                   >
-                    <X className="h-3.5 w-3.5" />
+                    {runStatus === 'running' ? (
+                      <Square className="h-3 w-3" />
+                    ) : (
+                      <Play className="h-3 w-3" />
+                    )}
+                    <span>{runStatus === 'running' ? 'Stop' : 'Run'}</span>
+                    <span className="ml-0.5 text-[10px] text-muted-foreground">
+                      {isMac ? '⌘R' : 'Ctrl+R'}
+                    </span>
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
                   <p className="text-xs">
-                    {canDelete ? 'Close terminal tab' : 'Cannot close selected item'}
+                    {runStatus === 'running'
+                      ? 'Stop run script'
+                      : setupStatus === 'running'
+                        ? 'Setup is still running'
+                        : setupStatus === 'failed'
+                          ? 'Setup failed'
+                          : 'Start run script'}
                   </p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-          );
-        })()}
+          </div>
+        )}
       </div>
 
-      {selectedLifecycle ? (
-        <div className="flex h-full flex-1 flex-col overflow-hidden">
-          <div className="border-b border-border px-3 py-2 text-xs text-muted-foreground">
-            {selectedLifecycle === 'setup'
-              ? `Setup status: ${setupStatus}`
-              : selectedLifecycle === 'teardown'
-                ? `Teardown status: ${teardownStatus}`
-                : `Run status: ${runStatus}`}
-          </div>
-          <pre className="h-full overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words p-3 text-xs leading-relaxed text-foreground">
-            {lifecycleLogs[selectedLifecycle].join('') || 'No lifecycle output yet.'}
-          </pre>
-        </div>
-      ) : (
-        <div
-          className={cn(
-            'bw-terminal relative flex-1 overflow-hidden',
-            effectiveTheme === 'dark' || effectiveTheme === 'dark-black'
-              ? agent === 'mistral'
-                ? effectiveTheme === 'dark-black'
-                  ? 'bg-[#141820]'
-                  : 'bg-[#202938]'
-                : 'bg-card'
-              : 'bg-white'
-          )}
-        >
-          {taskTerminals.terminals.map((terminal) => {
-            const isActive = parsed?.mode === 'task' && terminal.id === activeTerminalId;
-            return (
-              <div
-                key={`task::${terminal.id}`}
-                className={cn(
-                  'absolute inset-0 h-full w-full transition-opacity',
-                  isActive ? 'opacity-100' : 'pointer-events-none opacity-0'
-                )}
-              >
-                <TerminalPane
-                  id={terminal.id}
-                  cwd={terminal.cwd || task?.path}
-                  remote={remote?.connectionId ? { connectionId: remote.connectionId } : undefined}
-                  env={taskEnv}
-                  variant={
-                    effectiveTheme === 'dark' || effectiveTheme === 'dark-black' ? 'dark' : 'light'
-                  }
-                  themeOverride={themeOverride}
-                  className="h-full w-full"
-                  keepAlive
-                />
+      {/* Collapsed state — show nothing */}
+      {collapsed ? null : (
+        <>
+          {/* Setup tab content */}
+          {activeTab === 'setup' && task && (
+            <div className="flex h-full flex-1 flex-col overflow-hidden">
+              <div className="border-b border-border px-3 py-2 text-xs text-muted-foreground">
+                Setup status: {setupStatus}
               </div>
-            );
-          })}
-          {globalTerminals.terminals.map((terminal) => {
-            const isActive = parsed?.mode === 'global' && terminal.id === activeTerminalId;
-            return (
-              <div
-                key={`global::${terminal.id}`}
-                className={cn(
-                  'absolute inset-0 h-full w-full transition-opacity',
-                  isActive ? 'opacity-100' : 'pointer-events-none opacity-0'
-                )}
-              >
-                <TerminalPane
-                  id={terminal.id}
-                  cwd={terminal.cwd || projectPath}
-                  remote={remote?.connectionId ? { connectionId: remote.connectionId } : undefined}
-                  variant={
-                    effectiveTheme === 'dark' || effectiveTheme === 'dark-black' ? 'dark' : 'light'
-                  }
-                  themeOverride={themeOverride}
-                  className="h-full w-full"
-                  keepAlive
-                />
-              </div>
-            );
-          })}
-          {totalTerminals === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center text-xs text-muted-foreground">
-              <p>No terminal found.</p>
+              {lifecycleLogs.setup.length > 0 ? (
+                <pre className="h-full overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words p-3 text-xs leading-relaxed text-foreground">
+                  {lifecycleLogs.setup.join('')}
+                </pre>
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center text-sm text-muted-foreground">
+                  <p className="mb-1 font-medium">No setup script output</p>
+                  <p className="mb-4 text-xs">
+                    Setup script output will appear here after running setup.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSetupPlay}
+                    disabled={runActionBusy || !projectPath}
+                    className="gap-1.5"
+                  >
+                    <Play className="h-3 w-3" />
+                    Run setup
+                  </Button>
+                </div>
+              )}
             </div>
-          ) : null}
-        </div>
+          )}
+
+          {/* Run tab content */}
+          {activeTab === 'run' && task && (
+            <div className="flex h-full flex-1 flex-col overflow-hidden">
+              <div className="border-b border-border px-3 py-2 text-xs text-muted-foreground">
+                Run status: {runStatus}
+              </div>
+              {lifecycleLogs.run.length > 0 ? (
+                <pre className="h-full overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words p-3 text-xs leading-relaxed text-foreground">
+                  {lifecycleLogs.run.join('')}
+                </pre>
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center text-sm text-muted-foreground">
+                  <p className="mb-1 font-medium">No run script output</p>
+                  <p className="mb-4 text-xs">
+                    Run script output will appear here after starting the app.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRunButtonClick}
+                    disabled={runStatus !== 'running' && runButtonDisabled}
+                    className="gap-1.5"
+                  >
+                    <Play className="h-3 w-3" />
+                    Run app
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Terminal tab content */}
+          {activeTab === 'terminal' && (
+            <div
+              className={cn(
+                'bw-terminal relative flex-1 overflow-hidden',
+                effectiveTheme === 'dark' || effectiveTheme === 'dark-black'
+                  ? agent === 'mistral'
+                    ? effectiveTheme === 'dark-black'
+                      ? 'bg-[#141820]'
+                      : 'bg-[#202938]'
+                    : 'bg-card'
+                  : 'bg-white'
+              )}
+            >
+              {taskTerminals.terminals.map((terminal) => {
+                const isActive = terminalScope === 'task' && terminal.id === activeTerminalId;
+                return (
+                  <div
+                    key={`task::${terminal.id}`}
+                    className={cn(
+                      'absolute inset-0 h-full w-full transition-opacity',
+                      isActive ? 'opacity-100' : 'pointer-events-none opacity-0'
+                    )}
+                  >
+                    <TerminalPane
+                      id={terminal.id}
+                      cwd={terminal.cwd || task?.path}
+                      remote={
+                        remote?.connectionId ? { connectionId: remote.connectionId } : undefined
+                      }
+                      env={taskEnv}
+                      variant={
+                        effectiveTheme === 'dark' || effectiveTheme === 'dark-black'
+                          ? 'dark'
+                          : 'light'
+                      }
+                      themeOverride={themeOverride}
+                      className="h-full w-full"
+                      keepAlive
+                    />
+                  </div>
+                );
+              })}
+              {globalTerminals.terminals.map((terminal) => {
+                const isActive = terminalScope === 'global' && terminal.id === activeTerminalId;
+                return (
+                  <div
+                    key={`global::${terminal.id}`}
+                    className={cn(
+                      'absolute inset-0 h-full w-full transition-opacity',
+                      isActive ? 'opacity-100' : 'pointer-events-none opacity-0'
+                    )}
+                  >
+                    <TerminalPane
+                      id={terminal.id}
+                      cwd={terminal.cwd || projectPath}
+                      remote={
+                        remote?.connectionId ? { connectionId: remote.connectionId } : undefined
+                      }
+                      variant={
+                        effectiveTheme === 'dark' || effectiveTheme === 'dark-black'
+                          ? 'dark'
+                          : 'light'
+                      }
+                      themeOverride={themeOverride}
+                      className="h-full w-full"
+                      keepAlive
+                    />
+                  </div>
+                );
+              })}
+              {totalTerminals === 0 ? (
+                <div className="flex h-full flex-col items-center justify-center text-xs text-muted-foreground">
+                  <p>No terminal found.</p>
+                </div>
+              ) : null}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
