@@ -163,6 +163,8 @@ export class AgentSessionService {
   // Meta for Pi sessions needed by sendMessage (which doesn't have taskId/conversationId)
   private piSessionMeta = new Map<string, { taskId: string; conversationId: string }>();
   private webContents: WebContents | null = null;
+  // Track per-session busy state so we only emit on transitions
+  private busyState = new Map<string, boolean>();
 
   attachWindow(webContents: WebContents): void {
     this.webContents = webContents;
@@ -319,6 +321,17 @@ export class AgentSessionService {
       this.piCurrentMsg.delete(providerKey);
       // Keep piHistoryCache and piSessionMeta in memory — needed if session is recreated
     }
+    // Clear busy state and notify renderer
+    if (this.busyState.get(sessionId)) {
+      this.busyState.delete(sessionId);
+      if (this.webContents && !this.webContents.isDestroyed()) {
+        try {
+          this.webContents.send('agentSession:busy', { sessionId, busy: false });
+        } catch {}
+      }
+    } else {
+      this.busyState.delete(sessionId);
+    }
     log.info(`[AgentSessionService] Destroyed session: ${sessionId}`);
   }
 
@@ -467,6 +480,22 @@ export class AgentSessionService {
       this.webContents.send(`agentSession:event:${sessionId}`, event);
     } catch (err) {
       log.warn(`[AgentSessionService] Failed to push event for session ${sessionId}:`, err);
+    }
+
+    // Derive busy state from event type and broadcast transitions
+    const busy =
+      event.type === 'message_start' ||
+      event.type === 'text_delta' ||
+      event.type === 'thinking_start' ||
+      event.type === 'thinking_delta' ||
+      event.type === 'tool_call_start' ||
+      event.type === 'tool_result';
+    const wasBusy = this.busyState.get(sessionId) ?? false;
+    if (busy !== wasBusy) {
+      this.busyState.set(sessionId, busy);
+      try {
+        this.webContents.send('agentSession:busy', { sessionId, busy });
+      } catch {}
     }
   }
 }

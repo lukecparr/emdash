@@ -159,6 +159,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on(channel, wrapped);
     return () => ipcRenderer.removeListener(channel, wrapped);
   },
+  onAgentSessionBusy: (
+    listener: (info: { sessionId: string; busy: boolean }) => void
+  ): (() => void) => {
+    const channel = 'agentSession:busy';
+    const wrapped = (_: Electron.IpcRendererEvent, info: { sessionId: string; busy: boolean }) =>
+      listener(info);
+    ipcRenderer.on(channel, wrapped);
+    return () => ipcRenderer.removeListener(channel, wrapped);
+  },
 
   // App settings
   getSettings: () => ipcRenderer.invoke('settings:get'),
