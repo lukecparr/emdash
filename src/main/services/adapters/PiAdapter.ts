@@ -14,6 +14,14 @@ export interface PiAdapterOptions {
   env?: Record<string, string>;
 }
 
+export interface PiSlashCommand {
+  name: string;
+  description?: string;
+  source: 'builtin' | 'extension' | 'prompt' | 'skill';
+  location?: 'user' | 'project' | 'path';
+  path?: string;
+}
+
 /**
  * Spawns `pi --mode rpc` with bidirectional JSON over stdin/stdout,
  * parses JSONL from stdout, and emits NormalizedEvents.
@@ -22,6 +30,12 @@ export class PiAdapter extends EventEmitter {
   private proc: ChildProcess | null = null;
   private readonly opts: PiAdapterOptions;
   private isFirstMessageStart = true;
+  // Pending RPC request/response tracking (keyed by request id)
+  private pendingRpcRequests = new Map<
+    string,
+    { resolve: (value: unknown) => void; reject: (error: Error) => void }
+  >();
+  private rpcIdCounter = 0;
 
   constructor(opts: PiAdapterOptions) {
     super();
@@ -98,6 +112,107 @@ export class PiAdapter extends EventEmitter {
   }
 
   /**
+   * Send an RPC command and wait for a matching response.
+   */
+  private sendRpcRequest(cmd: Record<string, unknown>, timeoutMs = 5000): Promise<unknown> {
+    if (!this.proc?.stdin) {
+      return Promise.reject(new Error('No Pi process stdin'));
+    }
+    const id = `rpc-${++this.rpcIdCounter}`;
+    const payload = JSON.stringify({ ...cmd, id });
+
+    return new Promise<unknown>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingRpcRequests.delete(id);
+        reject(new Error(`RPC request '${cmd.type}' timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+
+      this.pendingRpcRequests.set(id, {
+        resolve: (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        reject: (err) => {
+          clearTimeout(timer);
+          reject(err);
+        },
+      });
+
+      this.proc!.stdin!.write(payload + '\n');
+    });
+  }
+
+  /**
+   * Fetch all available slash commands from the running Pi session.
+   * Returns builtin commands merged with dynamically loaded extensions/prompts/skills.
+   */
+  async getCommands(): Promise<PiSlashCommand[]> {
+    // Builtin slash commands (always available regardless of RPC state)
+    const builtins: PiSlashCommand[] = [
+      { name: 'settings', description: 'Open settings menu', source: 'builtin' },
+      { name: 'model', description: 'Select model (opens selector UI)', source: 'builtin' },
+      {
+        name: 'scoped-models',
+        description: 'Enable/disable models for Ctrl+P cycling',
+        source: 'builtin',
+      },
+      { name: 'export', description: 'Export session to HTML file', source: 'builtin' },
+      { name: 'share', description: 'Share session as a secret GitHub gist', source: 'builtin' },
+      { name: 'copy', description: 'Copy last agent message to clipboard', source: 'builtin' },
+      { name: 'name', description: 'Set session display name', source: 'builtin' },
+      { name: 'session', description: 'Show session info and stats', source: 'builtin' },
+      { name: 'changelog', description: 'Show changelog entries', source: 'builtin' },
+      { name: 'hotkeys', description: 'Show all keyboard shortcuts', source: 'builtin' },
+      { name: 'fork', description: 'Create a new fork from a previous message', source: 'builtin' },
+      {
+        name: 'tree',
+        description: 'Navigate session tree (switch branches)',
+        source: 'builtin',
+      },
+      { name: 'login', description: 'Login with OAuth provider', source: 'builtin' },
+      { name: 'logout', description: 'Logout from OAuth provider', source: 'builtin' },
+      { name: 'new', description: 'Start a new session', source: 'builtin' },
+      { name: 'compact', description: 'Manually compact the session context', source: 'builtin' },
+      { name: 'resume', description: 'Resume a different session', source: 'builtin' },
+      {
+        name: 'reload',
+        description: 'Reload extensions, skills, prompts, and themes',
+        source: 'builtin',
+      },
+      { name: 'quit', description: 'Quit pi', source: 'builtin' },
+    ];
+
+    if (!this.proc?.stdin) {
+      return builtins;
+    }
+
+    try {
+      const data = (await this.sendRpcRequest({ type: 'get_commands' })) as {
+        commands?: Array<{
+          name: string;
+          description?: string;
+          source: string;
+          location?: string;
+          path?: string;
+        }>;
+      };
+
+      const dynamicCommands: PiSlashCommand[] = (data?.commands ?? []).map((cmd) => ({
+        name: cmd.name,
+        description: cmd.description,
+        source: cmd.source as PiSlashCommand['source'],
+        location: cmd.location as PiSlashCommand['location'],
+        path: cmd.path,
+      }));
+
+      return [...builtins, ...dynamicCommands];
+    } catch (err) {
+      log.warn('[PiAdapter] Failed to get commands:', err);
+      return builtins;
+    }
+  }
+
+  /**
    * Returns a promise that resolves when the underlying process exits.
    * Must be called BEFORE abort() since abort() nulls out this.proc.
    */
@@ -132,8 +247,20 @@ export class PiAdapter extends EventEmitter {
   private handlePiEvent(obj: Record<string, unknown>): void {
     const msgType = obj.type as string | undefined;
 
-    // Filter out RPC acknowledgments
-    if (msgType === 'response') return;
+    // Route RPC responses to pending request handlers
+    if (msgType === 'response') {
+      const id = obj.id as string | undefined;
+      if (id && this.pendingRpcRequests.has(id)) {
+        const pending = this.pendingRpcRequests.get(id)!;
+        this.pendingRpcRequests.delete(id);
+        if (obj.success === false) {
+          pending.reject(new Error((obj.error as string) ?? 'RPC request failed'));
+        } else {
+          pending.resolve(obj.data);
+        }
+      }
+      return;
+    }
 
     if (msgType === 'message_start') {
       const message = obj.message as Record<string, unknown> | undefined;

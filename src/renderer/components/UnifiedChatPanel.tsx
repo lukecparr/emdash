@@ -3,6 +3,7 @@ import { Send, StopCircle, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import MessageBubble, { type ChatMessage, type MessageBlock } from './chat/MessageBubble';
 import ResponseFooter from './chat/ResponseFooter';
+import SlashCommandAutocomplete, { type SlashCommand } from './chat/SlashCommandAutocomplete';
 import type { NormalizedEvent, ToolResult } from '@shared/types/agentEvents';
 
 interface ImagePreview {
@@ -76,6 +77,12 @@ const UnifiedChatPanel: React.FC<UnifiedChatPanelProps> = ({
   const turnStartedAtRef = useRef<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Slash command autocomplete state
+  const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
+  const [showSlashAutocomplete, setShowSlashAutocomplete] = useState(false);
+  const [cursorPosition, setCursorPosition] = useState(0);
+  const slashCommandsFetched = useRef(false);
 
   // Sync isRunning from the main-process busy signal.
   // This ensures the running indicator reflects the actual process state even
@@ -348,6 +355,72 @@ const UnifiedChatPanel: React.FC<UnifiedChatPanelProps> = ({
     handleNormalizedEvent,
   ]);
 
+  // Fetch slash commands once the session is ready
+  useEffect(() => {
+    if (!sessionReady || slashCommandsFetched.current) return;
+    slashCommandsFetched.current = true;
+
+    const fetchCommands = async () => {
+      try {
+        const result = await window.electronAPI.agentSessionGetCommands({ sessionId });
+        if (result.ok && result.commands) {
+          setSlashCommands(result.commands as SlashCommand[]);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch slash commands:', err);
+      }
+    };
+
+    fetchCommands();
+  }, [sessionReady, sessionId]);
+
+  // Detect whether to show slash autocomplete based on input text
+  useEffect(() => {
+    const textBeforeCursor = inputText.slice(0, cursorPosition);
+    // Show autocomplete when user types '/' at start of input or after whitespace
+    const match = textBeforeCursor.match(/(?:^|\s)\/([\w:.-]*)$/);
+    setShowSlashAutocomplete(!!match && slashCommands.length > 0);
+  }, [inputText, cursorPosition, slashCommands.length]);
+
+  // Handle slash command selection
+  const handleSlashCommandSelect = useCallback(
+    (command: SlashCommand) => {
+      const textBeforeCursor = inputText.slice(0, cursorPosition);
+      const textAfterCursor = inputText.slice(cursorPosition);
+
+      // Find where the '/' starts
+      const match = textBeforeCursor.match(/(?:^|\s)\/([\w:.-]*)$/);
+      if (!match) return;
+
+      const slashStart =
+        textBeforeCursor.length - match[0].length + (match[0].startsWith('/') ? 0 : 1);
+      const newText = inputText.slice(0, slashStart) + '/' + command.name + ' ' + textAfterCursor;
+      setInputText(newText);
+      setShowSlashAutocomplete(false);
+
+      // Focus textarea and set cursor position after the command
+      requestAnimationFrame(() => {
+        const textarea = textareaRef.current;
+        if (textarea) {
+          const newPos = slashStart + command.name.length + 2; // +2 for '/' and space
+          textarea.focus();
+          textarea.setSelectionRange(newPos, newPos);
+          setCursorPosition(newPos);
+        }
+      });
+    },
+    [inputText, cursorPosition]
+  );
+
+  // Listen for close event from the autocomplete component (Escape key)
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const handler = () => setShowSlashAutocomplete(false);
+    el.addEventListener('slash-autocomplete-close', handler);
+    return () => el.removeEventListener('slash-autocomplete-close', handler);
+  }, []);
+
   const handleSubmit = useCallback(async () => {
     const text = inputText.trim();
     const images = pendingImages;
@@ -390,12 +463,16 @@ const UnifiedChatPanel: React.FC<UnifiedChatPanelProps> = ({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      // When slash autocomplete is open, let it handle Enter/Tab/Arrow keys
+      // (it uses capture-phase addEventListener, so it fires first)
+      if (showSlashAutocomplete) return;
+
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         void handleSubmit();
       }
     },
-    [handleSubmit]
+    [handleSubmit, showSlashAutocomplete]
   );
 
   // Handle paste events to capture images from clipboard
@@ -520,12 +597,26 @@ const UnifiedChatPanel: React.FC<UnifiedChatPanelProps> = ({
             ))}
           </div>
         )}
-        <div className="flex items-end gap-2">
+        <div className="relative flex items-end gap-2">
+          <SlashCommandAutocomplete
+            commands={slashCommands}
+            inputText={inputText}
+            cursorPosition={cursorPosition}
+            textareaRef={textareaRef as React.RefObject<HTMLTextAreaElement>}
+            onSelect={handleSlashCommandSelect}
+            visible={showSlashAutocomplete}
+          />
           <textarea
             ref={textareaRef}
             value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
+            onChange={(e) => {
+              setInputText(e.target.value);
+              setCursorPosition(e.target.selectionStart ?? 0);
+            }}
             onKeyDown={handleKeyDown}
+            onSelect={(e) => {
+              setCursorPosition((e.target as HTMLTextAreaElement).selectionStart ?? 0);
+            }}
             onPaste={handlePaste}
             placeholder={
               sessionReady

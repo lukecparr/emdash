@@ -153,6 +153,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('agentSession:abort', opts),
   agentSessionDestroy: (opts: { sessionId: string }) =>
     ipcRenderer.invoke('agentSession:destroy', opts),
+  agentSessionGetCommands: (opts: { sessionId: string }) =>
+    ipcRenderer.invoke('agentSession:getCommands', opts),
   onAgentEvent: (sessionId: string, listener: (event: any) => void) => {
     const channel = `agentSession:event:${sessionId}`;
     const wrapped = (_: Electron.IpcRendererEvent, event: any) => listener(event);
