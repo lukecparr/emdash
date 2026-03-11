@@ -71,6 +71,11 @@ const ChatInterface: React.FC<Props> = ({
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [conversationsLoaded, setConversationsLoaded] = useState(false);
+  // Track which task.id the conversations were loaded for so we never render
+  // stale conversation state (and stale terminalId) after a task switch.
+  const [conversationsLoadedForTaskId, setConversationsLoadedForTaskId] = useState<string | null>(
+    null
+  );
   const [showCreateChatModal, setShowCreateChatModal] = useState(false);
   const [showDeleteChatModal, setShowDeleteChatModal] = useState(false);
   const [chatToDelete, setChatToDelete] = useState<string | null>(null);
@@ -165,6 +170,7 @@ const ChatInterface: React.FC<Props> = ({
   useEffect(() => {
     const loadConversations = async () => {
       setConversationsLoaded(false);
+      setConversationsLoadedForTaskId(null);
       const result = await window.electronAPI.getConversations(task.id);
 
       if (result.success && result.conversations && result.conversations.length > 0) {
@@ -192,6 +198,7 @@ const ChatInterface: React.FC<Props> = ({
           });
         }
         setConversationsLoaded(true);
+        setConversationsLoadedForTaskId(task.id);
       } else {
         // No conversations exist - create default for backward compatibility
         // This ensures existing tasks always have at least one conversation
@@ -216,6 +223,7 @@ const ChatInterface: React.FC<Props> = ({
           // Save the agent to the conversation
           await window.electronAPI.saveConversation(conversationWithAgent);
           setConversationsLoaded(true);
+          setConversationsLoadedForTaskId(task.id);
         }
       }
     };
@@ -553,6 +561,17 @@ const ChatInterface: React.FC<Props> = ({
     const convAgent = (convToDelete?.provider || agent) as Agent;
     const terminalToDispose = makePtyId(convAgent, 'chat', chatToDelete);
     terminalSessionRegistry.dispose(terminalToDispose);
+    // Also destroy streaming-json agent sessions (pi, claude in streaming mode)
+    try {
+      await window.electronAPI.agentSessionDestroy({ sessionId: terminalToDispose });
+    } catch {}
+    // For main conversations, the session ID uses 'main' kind
+    if (convToDelete?.isMain) {
+      const mainSessionId = makePtyId(convAgent, 'main', task.id);
+      try {
+        await window.electronAPI.agentSessionDestroy({ sessionId: mainSessionId });
+      } catch {}
+    }
 
     await window.electronAPI.deleteConversation(chatToDelete);
 
@@ -1062,8 +1081,15 @@ const ChatInterface: React.FC<Props> = ({
                     : ''
               }`}
             >
-              {/* Wait for conversations to load to ensure stable terminalId */}
-              {conversationsLoaded && getProvider(agent)?.integrationMode === 'streaming-json' ? (
+              {/* Wait for conversations to load for the CURRENT task to ensure
+                  stable terminalId. Without this guard, a task switch causes a
+                  brief render where conversationsLoaded is still true from the
+                  previous task but task.id has changed, producing a wrong
+                  terminalId and spawning a phantom PTY that orphans resources
+                  and can interfere with the previous task's running agent. */}
+              {conversationsLoaded &&
+              conversationsLoadedForTaskId === task.id &&
+              getProvider(agent)?.integrationMode === 'streaming-json' ? (
                 <UnifiedChatPanel
                   key={terminalId}
                   sessionId={terminalId}
@@ -1077,7 +1103,8 @@ const ChatInterface: React.FC<Props> = ({
                   className="h-full w-full"
                 />
               ) : (
-                conversationsLoaded && (
+                conversationsLoaded &&
+                conversationsLoadedForTaskId === task.id && (
                   <TerminalPane
                     ref={terminalRef}
                     id={terminalId}

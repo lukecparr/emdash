@@ -351,6 +351,10 @@ export function useTaskManagement(options: UseTaskManagementOptions) {
             try {
               await window.electronAPI.ptyClearSnapshot({ id: sessionId });
             } catch {}
+            // Also destroy streaming-json agent sessions (pi, claude streaming mode)
+            try {
+              await window.electronAPI.agentSessionDestroy({ sessionId });
+            } catch {}
           })
         );
 
@@ -651,6 +655,10 @@ export function useTaskManagement(options: UseTaskManagementOptions) {
               } catch {}
               try {
                 await window.electronAPI.ptyClearSnapshot({ id: sessionId });
+              } catch {}
+              // Also destroy streaming-json agent sessions (pi, claude streaming mode)
+              try {
+                await window.electronAPI.agentSessionDestroy({ sessionId });
               } catch {}
             })
           );

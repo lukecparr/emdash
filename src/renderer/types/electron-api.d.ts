@@ -1338,6 +1338,9 @@ declare global {
         sessionId: string,
         listener: (event: import('@shared/types/agentEvents').NormalizedEvent) => void
       ) => () => void;
+      onAgentSessionBusy: (
+        listener: (info: { sessionId: string; busy: boolean }) => void
+      ) => () => void;
     };
   }
 }
@@ -1944,6 +1947,9 @@ export interface ElectronAPI {
   onAgentEvent: (
     sessionId: string,
     listener: (event: import('@shared/types/agentEvents').NormalizedEvent) => void
+  ) => () => void;
+  onAgentSessionBusy: (
+    listener: (info: { sessionId: string; busy: boolean }) => void
   ) => () => void;
 }
 import type { TerminalSnapshotPayload } from '#types/terminalSnapshot';

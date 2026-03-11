@@ -44,6 +44,20 @@ class ActivityStore {
         }
       } catch {}
     });
+
+    // Streaming-json agent sessions (pi, claude streaming mode) emit their own
+    // busy/idle signals. Bridge them into the same activity tracking so the
+    // sidebar spinner works for these agents too.
+    api?.onAgentSessionBusy?.((info: { sessionId: string; busy: boolean }) => {
+      try {
+        const id = String(info?.sessionId || '');
+        for (const wsId of this.subscribedIds) {
+          if (id.endsWith(wsId)) {
+            this.setBusy(wsId, info.busy, true);
+          }
+        }
+      } catch {}
+    });
   }
 
   private armTimer(wsId: string) {

@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Send, StopCircle, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import MessageBubble, { type ChatMessage, type MessageBlock } from './chat/MessageBubble';
+import ResponseFooter from './chat/ResponseFooter';
 import type { NormalizedEvent, ToolResult } from '@shared/types/agentEvents';
 
 interface ImagePreview {
@@ -69,8 +70,49 @@ const UnifiedChatPanel: React.FC<UnifiedChatPanelProps> = ({
   const [isRunning, setIsRunning] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
+  // Turn timing: track when the current response started and how long the last one took
+  const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
+  const [lastTurnDuration, setLastTurnDuration] = useState<number | null>(null);
+  const turnStartedAtRef = useRef<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Sync isRunning from the main-process busy signal.
+  // This ensures the running indicator reflects the actual process state even
+  // after the component remounts (e.g. switching tabs and coming back).
+  useEffect(() => {
+    const off = window.electronAPI.onAgentSessionBusy?.((info) => {
+      if (info.sessionId === sessionId) {
+        setIsRunning(info.busy);
+      }
+    });
+    return () => {
+      off?.();
+    };
+  }, [sessionId]);
+
+  // Track turn timing: start a timer when the agent starts running and
+  // compute the duration when it stops.
+  const prevIsRunningRef = useRef(false);
+  useEffect(() => {
+    const wasRunning = prevIsRunningRef.current;
+    prevIsRunningRef.current = isRunning;
+
+    if (isRunning && !wasRunning) {
+      // Transition: idle → running — record turn start
+      const now = Date.now();
+      setTurnStartedAt(now);
+      turnStartedAtRef.current = now;
+    } else if (!isRunning && wasRunning) {
+      // Transition: running → idle — compute turn duration
+      const started = turnStartedAtRef.current;
+      if (started != null) {
+        setLastTurnDuration(Date.now() - started);
+      }
+      setTurnStartedAt(null);
+      turnStartedAtRef.current = null;
+    }
+  }, [isRunning]);
 
   // Scroll to bottom whenever messages change
   useEffect(() => {
@@ -290,7 +332,9 @@ const UnifiedChatPanel: React.FC<UnifiedChatPanelProps> = ({
     return () => {
       destroyed = true;
       off();
-      window.electronAPI.agentSessionDestroy({ sessionId }).catch(() => {});
+      // Do NOT destroy the session on unmount. The agent process should keep
+      // running in the background when the user switches chat tabs or tasks.
+      // Sessions are only destroyed explicitly (e.g. deleting a chat or task).
     };
   }, [
     sessionId,
@@ -397,6 +441,19 @@ const UnifiedChatPanel: React.FC<UnifiedChatPanelProps> = ({
     e.stopPropagation();
   }, []);
 
+  // Extract the text content of the last assistant message for the copy button
+  const lastAssistantText = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'assistant') {
+        const textParts = messages[i].blocks
+          .filter((b): b is MessageBlock & { kind: 'text' } => b.kind === 'text')
+          .map((b) => b.text);
+        return textParts.length > 0 ? textParts.join('') : null;
+      }
+    }
+    return null;
+  }, [messages]);
+
   if (sessionError) {
     return (
       <div
@@ -426,6 +483,13 @@ const UnifiedChatPanel: React.FC<UnifiedChatPanelProps> = ({
             </div>
           )}
         </div>
+        <ResponseFooter
+          isRunning={isRunning}
+          startedAt={turnStartedAt}
+          lastDuration={lastTurnDuration}
+          lastAssistantText={lastAssistantText}
+          className="px-0"
+        />
         <div ref={bottomRef} />
       </div>
 
