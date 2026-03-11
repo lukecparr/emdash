@@ -4,7 +4,7 @@ import * as path from 'path';
 import { app, type WebContents } from 'electron';
 import { log } from '../lib/logger';
 import { ClaudeCodeAdapter, makeClaudeSessionUuid } from './adapters/ClaudeCodeAdapter';
-import { PiAdapter } from './adapters/PiAdapter';
+import { PiAdapter, type PiSlashCommand } from './adapters/PiAdapter';
 import type {
   HistoryMessage,
   HistoryMessageBlock,
@@ -307,6 +307,19 @@ export class AgentSessionService {
     this.trackExit(sessionId, adapter);
     adapter.abort();
     log.info(`[AgentSessionService] Aborted session: ${sessionId}`);
+  }
+
+  async getCommands(sessionId: string): Promise<PiSlashCommand[]> {
+    const adapter = this.sessions.get(sessionId);
+    if (!adapter) {
+      log.warn(`[AgentSessionService] getCommands: no session for id=${sessionId}`);
+      return [];
+    }
+    if (adapter instanceof PiAdapter) {
+      return adapter.getCommands();
+    }
+    // Other providers don't support this yet
+    return [];
   }
 
   destroySession(sessionId: string): void {
