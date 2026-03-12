@@ -6,6 +6,8 @@ import { ChangesBadge } from './TaskChanges';
 import { Spinner } from './ui/spinner';
 import { usePrStatus } from '../hooks/usePrStatus';
 import { useTaskBusy } from '../hooks/useTaskBusy';
+import { useTaskLifecycleStage } from '../hooks/useTaskLifecycleStage';
+import { PrStatusDot } from './PrStatusDot';
 
 import PrPreviewTooltip from './PrPreviewTooltip';
 import { normalizeTaskName, MAX_TASK_NAME_LENGTH } from '../lib/taskNames';
@@ -59,6 +61,8 @@ interface TaskItemProps {
   isPinned?: boolean;
   showDelete?: boolean;
   showDirectBadge?: boolean;
+  /** Show a colored lifecycle status dot next to the task name */
+  showStatusDot?: boolean;
 }
 
 export const TaskItem: React.FC<TaskItemProps> = ({
@@ -70,10 +74,12 @@ export const TaskItem: React.FC<TaskItemProps> = ({
   isPinned,
   showDelete: _showDelete,
   showDirectBadge = true,
+  showStatusDot = false,
 }) => {
   const { totalAdditions, totalDeletions, isLoading } = useTaskChanges(task.path, task.id);
   const { pr } = usePrStatus(task.path);
   const isRunning = useTaskBusy(task.id);
+  const { info: lifecycleInfo } = useTaskLifecycleStage(task.path);
 
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(task.name);
@@ -193,6 +199,9 @@ export const TaskItem: React.FC<TaskItemProps> = ({
       <div className="flex min-w-0 flex-1 items-center gap-1.5">
         {(isRunning || task.status === 'running') && (
           <Spinner size="sm" className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
+        )}
+        {showStatusDot && !(isRunning || task.status === 'running') && (
+          <PrStatusDot info={lifecycleInfo} />
         )}
         {isEditing ? (
           <input

@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react';
 import { refreshPrStatus, refreshAllSubscribedPrStatus } from '../lib/prStatusStore';
+import { refreshAllSubscribedCheckRuns } from '../lib/checkRunsStore';
 
 const POLLING_INTERVAL_MS = 30000; // 30 seconds
 const COOLDOWN_MS = 5000; // 5 second debounce for rapid focus/visibility events
 
 /**
- * Auto-refreshes PR status via:
+ * Auto-refreshes PR status and check runs via:
  * 1. Window focus - refreshes all subscribed tasks (debounced)
  * 2. Polling - refreshes active task every 30s (pauses when hidden)
  */
@@ -20,6 +21,7 @@ export function useAutoPrRefresh(activeTaskPath: string | undefined): void {
       if (now - lastFocusRefresh.current < COOLDOWN_MS) return;
       lastFocusRefresh.current = now;
       refreshAllSubscribedPrStatus().catch(() => {});
+      refreshAllSubscribedCheckRuns().catch(() => {});
     };
 
     window.addEventListener('focus', handleFocus);

@@ -684,6 +684,7 @@ declare global {
           state: string;
           isDraft?: boolean;
           mergeStateStatus?: string;
+          reviewDecision?: string;
           headRefName?: string;
           baseRefName?: string;
           title?: string;

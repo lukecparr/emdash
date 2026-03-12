@@ -16,6 +16,7 @@ import {
 } from './ui/sidebar';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from './ui/collapsible';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import {
   Home,
   Plus,
@@ -25,14 +26,19 @@ import {
   Github,
   Server,
   Puzzle,
+  Layers,
+  List,
 } from 'lucide-react';
 import SidebarEmptyState from './SidebarEmptyState';
 import { TaskItem } from './TaskItem';
+import GroupedTaskList from './GroupedTaskList';
 import { RemoteProjectIndicator } from './ssh/RemoteProjectIndicator';
 import { useRemoteProject } from '../hooks/useRemoteProject';
 import type { Project } from '../types/app';
 import type { Task } from '../types/chat';
 import type { ConnectionState } from './ssh';
+
+const SIDEBAR_VIEW_KEY = 'emdash:sidebar:groupByStatus';
 
 interface LeftSidebarProps {
   projects: Project[];
@@ -163,6 +169,24 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
 }) => {
   const { open, isMobile, setOpen } = useSidebar();
 
+  // Toggle between flat list and lifecycle-grouped view
+  const [groupByStatus, setGroupByStatus] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_VIEW_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const toggleGroupByStatus = useCallback(() => {
+    setGroupByStatus((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(SIDEBAR_VIEW_KEY, String(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+
   // Track projects that should be force-expanded (e.g. when first task is created)
   const [forceOpenIds, setForceOpenIds] = useState<Set<string>>(new Set());
   const prevTaskCountsRef = useRef<Map<string, number>>(new Map());
@@ -239,50 +263,74 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
               <span className="cursor-default select-none text-sm font-medium normal-case tracking-normal text-foreground/30">
                 Projects
               </span>
-              {onOpenProject && (
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="text-foreground/30"
-                      aria-label="Add project"
-                    >
-                      <FolderPlus className="h-3.5 w-3.5" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-48 p-1" align="start" sideOffset={4}>
-                    <div className="space-y-1">
-                      <MenuItemButton
-                        icon={FolderOpen}
-                        label="Open Folder"
-                        ariaLabel="Open Folder"
-                        onClick={() => onOpenProject?.()}
-                      />
-                      <MenuItemButton
-                        icon={Plus}
-                        label="Create New"
-                        ariaLabel="Create New Project"
-                        onClick={() => onNewProject?.()}
-                      />
-                      <MenuItemButton
-                        icon={Github}
-                        label="Clone from GitHub"
-                        ariaLabel="Clone from GitHub"
-                        onClick={() => onCloneProject?.()}
-                      />
-                      {onAddRemoteProject && (
+              <div className="flex items-center gap-0.5">
+                <TooltipProvider delayDuration={300}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-foreground/30"
+                        aria-label={groupByStatus ? 'Switch to flat list' : 'Group by PR status'}
+                        onClick={toggleGroupByStatus}
+                      >
+                        {groupByStatus ? (
+                          <List className="h-3.5 w-3.5" />
+                        ) : (
+                          <Layers className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" sideOffset={4}>
+                      {groupByStatus ? 'Flat list' : 'Group by status'}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                {onOpenProject && (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-foreground/30"
+                        aria-label="Add project"
+                      >
+                        <FolderPlus className="h-3.5 w-3.5" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-48 p-1" align="start" sideOffset={4}>
+                      <div className="space-y-1">
                         <MenuItemButton
-                          icon={Server}
-                          label="Add Remote Project"
-                          ariaLabel="Add Remote Project"
-                          onClick={() => onAddRemoteProject?.()}
+                          icon={FolderOpen}
+                          label="Open Folder"
+                          ariaLabel="Open Folder"
+                          onClick={() => onOpenProject?.()}
                         />
-                      )}
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              )}
+                        <MenuItemButton
+                          icon={Plus}
+                          label="Create New"
+                          ariaLabel="Create New Project"
+                          onClick={() => onNewProject?.()}
+                        />
+                        <MenuItemButton
+                          icon={Github}
+                          label="Clone from GitHub"
+                          ariaLabel="Clone from GitHub"
+                          onClick={() => onCloneProject?.()}
+                        />
+                        {onAddRemoteProject && (
+                          <MenuItemButton
+                            icon={Server}
+                            label="Add Remote Project"
+                            ariaLabel="Add Remote Project"
+                            onClick={() => onAddRemoteProject?.()}
+                          />
+                        )}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                )}
+              </div>
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
@@ -393,60 +441,76 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
 
                           <CollapsibleContent asChild>
                             <div className="mt-1 min-w-0">
-                              <div className="flex min-w-0 flex-col gap-1">
-                                {typedProject.tasks
-                                  ?.slice()
-                                  .sort((a, b) => {
-                                    const aPinned = pinnedTaskIds?.has(a.id) ? 1 : 0;
-                                    const bPinned = pinnedTaskIds?.has(b.id) ? 1 : 0;
-                                    return bPinned - aPinned;
-                                  })
-                                  .map((task) => {
-                                    const isActive = activeTask?.id === task.id;
-                                    return (
-                                      <motion.div
-                                        key={task.id}
-                                        whileTap={{ scale: 0.97 }}
-                                        transition={{ duration: 0.1, ease: 'easeInOut' }}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleNavigationWithCloseSettings(() => {
-                                            if (
-                                              onSelectProject &&
-                                              selectedProject?.id !== typedProject.id
-                                            ) {
-                                              onSelectProject(typedProject);
+                              {groupByStatus ? (
+                                <GroupedTaskList
+                                  project={typedProject}
+                                  tasks={typedProject.tasks || []}
+                                  activeTask={activeTask}
+                                  pinnedTaskIds={pinnedTaskIds}
+                                  onSelectTask={onSelectTask}
+                                  onSelectProject={onSelectProject}
+                                  selectedProject={selectedProject}
+                                  onPinTask={onPinTask}
+                                  onRenameTask={onRenameTask}
+                                  onArchiveTask={onArchiveTask}
+                                  onNavigate={handleNavigationWithCloseSettings}
+                                />
+                              ) : (
+                                <div className="flex min-w-0 flex-col gap-1">
+                                  {typedProject.tasks
+                                    ?.slice()
+                                    .sort((a, b) => {
+                                      const aPinned = pinnedTaskIds?.has(a.id) ? 1 : 0;
+                                      const bPinned = pinnedTaskIds?.has(b.id) ? 1 : 0;
+                                      return bPinned - aPinned;
+                                    })
+                                    .map((task) => {
+                                      const isActive = activeTask?.id === task.id;
+                                      return (
+                                        <motion.div
+                                          key={task.id}
+                                          whileTap={{ scale: 0.97 }}
+                                          transition={{ duration: 0.1, ease: 'easeInOut' }}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleNavigationWithCloseSettings(() => {
+                                              if (
+                                                onSelectProject &&
+                                                selectedProject?.id !== typedProject.id
+                                              ) {
+                                                onSelectProject(typedProject);
+                                              }
+                                              onSelectTask && onSelectTask(task);
+                                            });
+                                          }}
+                                          className={`group/task min-w-0 rounded-md py-1.5 pl-1 pr-2 hover:bg-accent ${
+                                            isActive ? 'bg-black/[0.06] dark:bg-white/[0.08]' : ''
+                                          }`}
+                                          title={task.name}
+                                        >
+                                          <TaskItem
+                                            task={task}
+                                            showDelete={false}
+                                            showDirectBadge={false}
+                                            isPinned={pinnedTaskIds?.has(task.id)}
+                                            onPin={onPinTask ? () => onPinTask(task) : undefined}
+                                            onRename={
+                                              onRenameTask && !task.metadata?.multiAgent?.enabled
+                                                ? (newName) =>
+                                                    onRenameTask(typedProject, task, newName)
+                                                : undefined
                                             }
-                                            onSelectTask && onSelectTask(task);
-                                          });
-                                        }}
-                                        className={`group/task min-w-0 rounded-md py-1.5 pl-1 pr-2 hover:bg-accent ${
-                                          isActive ? 'bg-black/[0.06] dark:bg-white/[0.08]' : ''
-                                        }`}
-                                        title={task.name}
-                                      >
-                                        <TaskItem
-                                          task={task}
-                                          showDelete={false}
-                                          showDirectBadge={false}
-                                          isPinned={pinnedTaskIds?.has(task.id)}
-                                          onPin={onPinTask ? () => onPinTask(task) : undefined}
-                                          onRename={
-                                            onRenameTask && !task.metadata?.multiAgent?.enabled
-                                              ? (newName) =>
-                                                  onRenameTask(typedProject, task, newName)
-                                              : undefined
-                                          }
-                                          onArchive={
-                                            onArchiveTask
-                                              ? () => onArchiveTask(typedProject, task)
-                                              : undefined
-                                          }
-                                        />
-                                      </motion.div>
-                                    );
-                                  })}
-                              </div>
+                                            onArchive={
+                                              onArchiveTask
+                                                ? () => onArchiveTask(typedProject, task)
+                                                : undefined
+                                            }
+                                          />
+                                        </motion.div>
+                                      );
+                                    })}
+                                </div>
+                              )}
                             </div>
                           </CollapsibleContent>
                         </Collapsible>

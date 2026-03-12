@@ -8,6 +8,7 @@ export type PrInfo = {
 
 export type PrStatus = PrInfo & {
   mergeStateStatus?: string;
+  reviewDecision?: string;
   headRefName?: string;
   baseRefName?: string;
   additions?: number;
