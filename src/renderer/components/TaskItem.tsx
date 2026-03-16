@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { ArrowUpRight, AlertCircle, Pencil, Pin, PinOff, Archive } from 'lucide-react';
+import { AlertCircle, Pencil, Pin, PinOff, Archive } from 'lucide-react';
 import { useTaskChanges } from '../hooks/useTaskChanges';
 import { ChangesBadge } from './TaskChanges';
 

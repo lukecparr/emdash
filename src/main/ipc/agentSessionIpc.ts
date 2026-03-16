@@ -67,6 +67,20 @@ export function registerAgentSessionIpc(): void {
     }
   });
 
+  ipcMain.handle(
+    'agentSession:getCommands',
+    async (_event, { sessionId }: { sessionId: string }) => {
+      try {
+        const commands = await agentSessionService.getCommands(sessionId);
+        return { ok: true, commands };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        log.error('[agentSessionIpc] getCommands error:', err);
+        return { ok: false, error: message, commands: [] };
+      }
+    }
+  );
+
   ipcMain.handle('agentSession:destroy', async (_event, { sessionId }: { sessionId: string }) => {
     try {
       agentSessionService.destroySession(sessionId);

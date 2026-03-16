@@ -684,6 +684,7 @@ declare global {
           state: string;
           isDraft?: boolean;
           mergeStateStatus?: string;
+          reviewDecision?: string;
           headRefName?: string;
           baseRefName?: string;
           title?: string;
@@ -1334,6 +1335,17 @@ declare global {
       agentSessionDestroy: (opts: {
         sessionId: string;
       }) => Promise<{ ok: boolean; error?: string }>;
+      agentSessionGetCommands: (opts: { sessionId: string }) => Promise<{
+        ok: boolean;
+        error?: string;
+        commands?: Array<{
+          name: string;
+          description?: string;
+          source: 'builtin' | 'extension' | 'prompt' | 'skill';
+          location?: 'user' | 'project' | 'path';
+          path?: string;
+        }>;
+      }>;
       onAgentEvent: (
         sessionId: string,
         listener: (event: import('@shared/types/agentEvents').NormalizedEvent) => void
@@ -1944,6 +1956,17 @@ export interface ElectronAPI {
   }) => Promise<{ ok: boolean; error?: string }>;
   agentSessionAbort: (opts: { sessionId: string }) => Promise<{ ok: boolean; error?: string }>;
   agentSessionDestroy: (opts: { sessionId: string }) => Promise<{ ok: boolean; error?: string }>;
+  agentSessionGetCommands: (opts: { sessionId: string }) => Promise<{
+    ok: boolean;
+    error?: string;
+    commands?: Array<{
+      name: string;
+      description?: string;
+      source: 'builtin' | 'extension' | 'prompt' | 'skill';
+      location?: 'user' | 'project' | 'path';
+      path?: string;
+    }>;
+  }>;
   onAgentEvent: (
     sessionId: string,
     listener: (event: import('@shared/types/agentEvents').NormalizedEvent) => void
