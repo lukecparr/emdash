@@ -5,6 +5,7 @@ import MessageBubble, { type ChatMessage, type MessageBlock } from './chat/Messa
 import ResponseFooter from './chat/ResponseFooter';
 import SlashCommandAutocomplete, { type SlashCommand } from './chat/SlashCommandAutocomplete';
 import type { NormalizedEvent, ToolResult } from '@shared/types/agentEvents';
+import { getDraft, setDraft, clearDraft } from '@/lib/draftInputStore';
 
 interface ImagePreview {
   id: string;
@@ -66,7 +67,7 @@ const UnifiedChatPanel: React.FC<UnifiedChatPanelProps> = ({
   className,
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [inputText, setInputText] = useState('');
+  const [inputText, setInputText] = useState(() => getDraft(sessionId));
   const [pendingImages, setPendingImages] = useState<ImagePreview[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
@@ -125,6 +126,12 @@ const UnifiedChatPanel: React.FC<UnifiedChatPanelProps> = ({
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Persist draft input text to the in-memory store so it survives
+  // unmount/remount cycles (e.g. switching tasks or conversation tabs).
+  useEffect(() => {
+    setDraft(sessionId, inputText);
+  }, [sessionId, inputText]);
 
   // Clean up object URLs when component unmounts
   useEffect(() => {
@@ -427,6 +434,7 @@ const UnifiedChatPanel: React.FC<UnifiedChatPanelProps> = ({
     if ((!text && images.length === 0) || !sessionReady || isRunning) return;
 
     setInputText('');
+    clearDraft(sessionId);
     // Clear pending images without revoking URLs — the message bubble will use the base64 data
     setPendingImages([]);
     // Revoke preview URLs since we no longer need them
