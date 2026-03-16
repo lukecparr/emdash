@@ -52,12 +52,21 @@ const NotificationSettingsCard: React.FC = () => {
   };
 
   return (
-    <div className="flex items-center justify-between gap-4">
-      <div className="flex flex-1 flex-col gap-0.5">
-        <p className="text-sm font-medium text-foreground">Notifications</p>
-        <p className="text-sm text-muted-foreground">Get notified when agents complete tasks.</p>
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-1 flex-col gap-0.5">
+          <p className="text-sm font-medium text-foreground">Notifications</p>
+          <p className="text-sm text-muted-foreground">Get notified when agents complete tasks.</p>
+        </div>
+        <Switch checked={enabled} disabled={loading} onCheckedChange={updateEnabled} />
       </div>
-      <Switch checked={enabled} disabled={loading} onCheckedChange={updateEnabled} />
+      <div className="flex items-center justify-between gap-4 pl-1">
+        <div className="flex flex-1 flex-col gap-0.5">
+          <p className="text-sm font-medium text-foreground">Sound</p>
+          <p className="text-sm text-muted-foreground">Play an audio chime on task completion.</p>
+        </div>
+        <Switch checked={sound} disabled={loading || !enabled} onCheckedChange={updateSound} />
+      </div>
     </div>
   );
 };

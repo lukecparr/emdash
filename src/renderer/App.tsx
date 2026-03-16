@@ -43,6 +43,8 @@ import { useTaskManagement } from './hooks/useTaskManagement';
 import { createTask } from './lib/taskCreationService';
 import { getProjectRepoKey } from './lib/projectUtils';
 import { handleMenuUndo, handleMenuRedo } from './lib/menuUndoRedo';
+import { activityStore } from './lib/activityStore';
+import { unreadTaskStore } from './lib/unreadTaskStore';
 
 // Extracted constants
 import {
@@ -179,6 +181,25 @@ const AppContent: React.FC = () => {
     };
   }, []);
 
+  // Track the active task id in a ref so the transition callback can read
+  // it without the effect re-subscribing on every task switch.
+  const activeTaskIdRef = useRef<string | null>(null);
+
+  // Play an audio cue and mark tasks as unread when an agent transitions
+  // from busy → idle. The unread dot is only added for non-active tasks.
+  useEffect(() => {
+    const off = activityStore.onTransition((wsId, busy) => {
+      if (busy) return;
+      void import('./lib/audioNotification').then(({ playCompletionChimeIfEnabled }) => {
+        void playCompletionChimeIfEnabled();
+      });
+      if (wsId && wsId !== activeTaskIdRef.current) {
+        unreadTaskStore.markUnread(wsId);
+      }
+    });
+    return off;
+  }, []);
+
   // --- App initialization (version, platform, loadAppData) ---
   // The callbacks here execute inside a useEffect (after render), so all hooks
   // are already initialized by the time they run — no temporal dead zone issue.
@@ -232,6 +253,13 @@ const AppContent: React.FC = () => {
     toast,
     activateProjectView: projectMgmt.activateProjectView,
   });
+
+  // Keep active task ref in sync and clear unread when task is opened
+  useEffect(() => {
+    const id = taskMgmt.activeTask?.id ?? null;
+    activeTaskIdRef.current = id;
+    if (id) unreadTaskStore.markRead(id);
+  }, [taskMgmt.activeTask?.id]);
 
   // --- Panel layout ---
   const {

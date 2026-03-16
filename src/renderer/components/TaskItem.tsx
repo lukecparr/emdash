@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { ArrowUpRight, AlertCircle, Pencil, Pin, PinOff, Archive } from 'lucide-react';
+import { AlertCircle, Pencil, Pin, PinOff, Archive } from 'lucide-react';
 import { useTaskChanges } from '../hooks/useTaskChanges';
 import { ChangesBadge } from './TaskChanges';
 
@@ -8,6 +8,7 @@ import { usePrStatus } from '../hooks/usePrStatus';
 import { useTaskBusy } from '../hooks/useTaskBusy';
 import { useTaskLifecycleStage } from '../hooks/useTaskLifecycleStage';
 import { PrStatusDot } from './PrStatusDot';
+import { useTaskUnread } from '../hooks/useTaskUnread';
 
 import PrPreviewTooltip from './PrPreviewTooltip';
 import { normalizeTaskName, MAX_TASK_NAME_LENGTH } from '../lib/taskNames';
@@ -80,6 +81,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
   const { pr } = usePrStatus(task.path);
   const isRunning = useTaskBusy(task.id);
   const { info: lifecycleInfo } = useTaskLifecycleStage(task.path);
+  const isUnread = useTaskUnread(task.id);
 
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(task.name);
@@ -202,6 +204,12 @@ export const TaskItem: React.FC<TaskItemProps> = ({
         )}
         {showStatusDot && !(isRunning || task.status === 'running') && (
           <PrStatusDot info={lifecycleInfo} />
+        )}
+        {!isRunning && isUnread && (
+          <span
+            className="h-2 w-2 flex-shrink-0 rounded-full bg-primary"
+            title="Agent finished — click to view"
+          />
         )}
         {isEditing ? (
           <input
