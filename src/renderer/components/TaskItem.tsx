@@ -6,6 +6,7 @@ import { ChangesBadge } from './TaskChanges';
 import { Spinner } from './ui/spinner';
 import { usePrStatus } from '../hooks/usePrStatus';
 import { useTaskBusy } from '../hooks/useTaskBusy';
+import { useTaskUnread } from '../hooks/useTaskUnread';
 
 import PrPreviewTooltip from './PrPreviewTooltip';
 import { normalizeTaskName, MAX_TASK_NAME_LENGTH } from '../lib/taskNames';
@@ -74,6 +75,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
   const { totalAdditions, totalDeletions, isLoading } = useTaskChanges(task.path, task.id);
   const { pr } = usePrStatus(task.path);
   const isRunning = useTaskBusy(task.id);
+  const isUnread = useTaskUnread(task.id);
 
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(task.name);
@@ -193,6 +195,12 @@ export const TaskItem: React.FC<TaskItemProps> = ({
       <div className="flex min-w-0 flex-1 items-center gap-1.5">
         {(isRunning || task.status === 'running') && (
           <Spinner size="sm" className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
+        )}
+        {!isRunning && isUnread && (
+          <span
+            className="h-2 w-2 flex-shrink-0 rounded-full bg-primary"
+            title="Agent finished — click to view"
+          />
         )}
         {isEditing ? (
           <input

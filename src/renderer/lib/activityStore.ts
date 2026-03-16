@@ -4,9 +4,11 @@ import { type PtyIdKind, parsePtyId, makePtyId } from '@shared/ptyId';
 import { PROVIDER_IDS } from '@shared/providers/registry';
 
 type Listener = (busy: boolean) => void;
+type TransitionListener = (wsId: string, busy: boolean) => void;
 
 class ActivityStore {
   private listeners = new Map<string, Set<Listener>>();
+  private transitionListeners = new Set<TransitionListener>();
   private states = new Map<string, boolean>();
   private timers = new Map<string, ReturnType<typeof setTimeout>>();
   private busySince = new Map<string, number>();
@@ -110,16 +112,33 @@ class ActivityStore {
 
   private emit(wsId: string, busy: boolean) {
     const ls = this.listeners.get(wsId);
-    if (!ls) return;
-    for (const fn of ls) {
+    if (ls) {
+      for (const fn of ls) {
+        try {
+          fn(busy);
+        } catch {}
+      }
+    }
+    for (const fn of this.transitionListeners) {
       try {
-        fn(busy);
+        fn(wsId, busy);
       } catch {}
     }
   }
 
   setTaskBusy(wsId: string, busy: boolean) {
     this.setBusy(wsId, busy, false);
+  }
+
+  /**
+   * Register a global listener that fires on every busy/idle transition for
+   * any tracked workspace id. Returns an unsubscribe function.
+   */
+  onTransition(fn: TransitionListener): () => void {
+    this.transitionListeners.add(fn);
+    return () => {
+      this.transitionListeners.delete(fn);
+    };
   }
 
   subscribe(wsId: string, fn: Listener, opts?: { kinds?: PtyIdKind[] }) {
