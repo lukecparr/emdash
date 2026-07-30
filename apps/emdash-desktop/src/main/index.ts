@@ -34,6 +34,7 @@ import { promptLibraryService } from './core/prompt-library/service';
 import { providerAccountRegistry } from './core/provider-accounts/provider-account-registry-instance';
 import { remoteTmuxReaperService } from './core/pty/remote-tmux-reaper-service';
 import { prSyncScheduler } from './core/pull-requests/pr-sync-scheduler';
+import { viewerPrSyncScheduler } from './core/pull-requests/viewer-pr-sync-scheduler';
 import { reconcileResourceSampler } from './core/resource-monitor/resource-sampler';
 import { searchService } from './core/search/search-service';
 import { workspaceFileIndexService } from './core/search/workspace-file-index-service';
@@ -149,6 +150,7 @@ void app.whenReady().then(async () => {
   automationsService.start();
   appService.initialize();
   await appSettingsService.initialize();
+  viewerPrSyncScheduler.initialize();
   applyNativeTheme(await appSettingsService.get('theme'));
   browserWebContentsRegistry.setKeyboardSettings(await appSettingsService.get('keyboard'));
   setBrowserCorsRelaxationSettings(await appSettingsService.get('browser'));
@@ -210,6 +212,7 @@ void app.whenReady().then(async () => {
     .reconcileAtStartup()
     .then(() => {
       events.emit(githubAccountsChangedChannel, { reason: 'startup-reconciliation' });
+      viewerPrSyncScheduler.requestResync('startup-reconciliation');
     })
     .catch((e) => {
       log.warn('Failed to reconcile GitHub accounts at startup:', e);

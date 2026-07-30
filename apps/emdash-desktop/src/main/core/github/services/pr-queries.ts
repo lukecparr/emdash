@@ -53,10 +53,14 @@ export const LIST_PRS_QUERY = `
   ${PR_SUMMARY_FRAGMENT}
 `;
 
-export const SEARCH_PRS_QUERY = `
-  query searchPullRequests($searchQuery: String!, $limit: Int!) {
-    search(query: $searchQuery, type: ISSUE, first: $limit) {
+export const VIEWER_SEARCH_PRS_QUERY = `
+  query viewerSearchPullRequests($searchQuery: String!, $limit: Int!, $cursor: String) {
+    search(query: $searchQuery, type: ISSUE, first: $limit, after: $cursor) {
       issueCount
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
       nodes {
         ... on PullRequest { ...PrSummaryFields }
       }

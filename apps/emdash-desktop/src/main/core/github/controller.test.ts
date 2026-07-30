@@ -30,6 +30,12 @@ vi.mock('@main/core/github/services/repo-service', () => ({
   repoService: {},
 }));
 
+vi.mock('@main/core/pull-requests/viewer-pr-sync-scheduler', () => ({
+  viewerPrSyncScheduler: {
+    requestResync: vi.fn(),
+  },
+}));
+
 vi.mock('@main/lib/events', () => ({
   events: {
     emit: mocks.emit,

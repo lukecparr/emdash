@@ -6,6 +6,7 @@ import { agentHookService } from '@main/core/agent-hooks/agent-hook-service';
 import { automationsService } from '@main/core/automations/automations-service';
 import { remoteTmuxReaperService } from '@main/core/pty/remote-tmux-reaper-service';
 import { prSyncScheduler } from '@main/core/pull-requests/pr-sync-scheduler';
+import { viewerPrSyncScheduler } from '@main/core/pull-requests/viewer-pr-sync-scheduler';
 import { stopResourceSampler } from '@main/core/resource-monitor/resource-sampler';
 import { runtimeManager } from '@main/core/runtime/runtime-manager';
 import { updateService } from '@main/core/updates/update-service';
@@ -47,6 +48,7 @@ export async function runQuitCleanup(): Promise<void> {
   stopResourceSampler();
   updateService.dispose();
   prSyncScheduler.dispose();
+  viewerPrSyncScheduler.dispose();
   remoteTmuxReaperService.dispose();
 
   // critical phase

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { err, ok, type Result } from '@emdash/shared';
 import type { Octokit } from '@octokit/rest';
-import { and, eq, inArray, lt, ne } from 'drizzle-orm';
+import { and, eq, inArray, lt, ne, notInArray } from 'drizzle-orm';
 import type { GitHubApiAuthError } from '@main/core/github/services/github-api-auth-errors';
 import type { GitHubApiAuthContext } from '@main/core/github/services/github-api-auth-service';
 import { getOctokit } from '@main/core/github/services/octokit-provider';
@@ -20,6 +20,7 @@ import {
   pullRequestLabels,
   pullRequests,
   pullRequestUsers,
+  pullRequestViewerFlags,
 } from '@main/db/schema';
 import { events } from '@main/lib/events';
 import { log } from '@main/lib/logger';
@@ -119,7 +120,7 @@ function restUserToPullRequestUser(user: {
   };
 }
 
-interface GqlPrNode {
+export interface GqlPrNode {
   number: number;
   title: string;
   url: string;
@@ -313,7 +314,13 @@ export class PrSyncEngine {
       }
 
       log.info('PrSyncEngine: deleteProjectData — deleting PR rows and KV cursors', { url });
-      await db.delete(pullRequests).where(eq(pullRequests.repositoryUrl, url));
+      // Keep rows that a viewer-scoped sync still flags (review requests / authored PRs).
+      const flaggedUrls = db
+        .select({ url: pullRequestViewerFlags.pullRequestUrl })
+        .from(pullRequestViewerFlags);
+      await db
+        .delete(pullRequests)
+        .where(and(eq(pullRequests.repositoryUrl, url), notInArray(pullRequests.url, flaggedUrls)));
       await Promise.all([
         this.kv.del(`fullsync:${url}`),
         this.kv.del(`incrementalsync:${url}`),
@@ -1002,6 +1009,26 @@ export class PrSyncEngine {
     await this.kv.set(tsKey, new Date().toISOString());
     // Users are upserted inline during _upsertBatch, so this is a no-op for now.
     // Reserved for future use (e.g. refreshing user profile pics in bulk).
+  }
+
+  /**
+   * Upsert PR nodes coming from a cross-repo GraphQL search. Each node's
+   * repository is derived from its own baseRepository URL; nodes without a
+   * parseable one are skipped (search can return partially-visible repos).
+   */
+  async upsertSearchResults(nodes: GqlPrNode[]): Promise<PullRequest[]> {
+    const results: PullRequest[] = [];
+    for (const node of nodes) {
+      const repositoryUrl = parseRepositoryRef(node.baseRepository?.url)?.repositoryUrl;
+      if (!repositoryUrl) {
+        log.warn('PrSyncEngine: skipping search node without baseRepository', { url: node.url });
+        continue;
+      }
+      const pr = await this._upsertOne(repositoryUrl, node);
+      if (pr) results.push(pr);
+    }
+    this._notifyPrsUpdated(results);
+    return results;
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────

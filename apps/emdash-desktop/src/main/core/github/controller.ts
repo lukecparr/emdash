@@ -2,6 +2,7 @@ import { Result } from '@emdash/shared/result';
 import { githubAccountService } from '@main/core/github/accounts/github-account-service-instance';
 import { githubDeviceFlowService } from '@main/core/github/services/github-device-flow-service-instance';
 import { repoService } from '@main/core/github/services/repo-service';
+import { viewerPrSyncScheduler } from '@main/core/pull-requests/viewer-pr-sync-scheduler';
 import { events } from '@main/lib/events';
 import { log } from '@main/lib/logger';
 import { telemetryService } from '@main/lib/telemetry';
@@ -57,6 +58,7 @@ export const githubController = createRPCController({
 
       telemetryService.capture('integration_connected', { provider: 'github' });
       events.emit(githubAuthSuccessChannel, { user: result.user });
+      viewerPrSyncScheduler.requestResync('account-connected');
       return { success: true, account: accountSummary };
     } catch (error) {
       log.error('Failed to register GitHub account after device flow:', error);
@@ -80,6 +82,7 @@ export const githubController = createRPCController({
       const result = await githubAccountService.importCliAccounts();
       if (result.importedAccountIds.length > 0) {
         telemetryService.capture('integration_connected', { provider: 'github', source: 'cli' });
+        viewerPrSyncScheduler.requestResync('cli-accounts-imported');
       }
       return result;
     }).unwrapOrElse((error) => {
@@ -102,6 +105,7 @@ export const githubController = createRPCController({
       const accounts = await githubAccountService.removeAccount(accountId);
       if (!accounts) return { success: false, error: 'GitHub account not found' };
       telemetryService.capture('integration_disconnected', { provider: 'github' });
+      viewerPrSyncScheduler.requestResync('account-removed');
       return { success: true, accounts };
     }).unwrapOrElse((error) => {
       log.error('Failed to remove GitHub account:', error);
