@@ -20,6 +20,24 @@ function chunk<T>(values: readonly T[]): T[][] {
   return chunks;
 }
 
+async function getViewerPrLists(): Promise<
+  Pick<WorkHubSnapshot, 'reviewRequests' | 'authoredPrs'>
+> {
+  const flagged = await prQueryService.getViewerFlaggedPullRequests();
+  const byUpdatedAtDesc = (a: PullRequest, b: PullRequest) =>
+    b.updatedAt.localeCompare(a.updatedAt);
+  return {
+    reviewRequests: flagged
+      .filter((f) => f.reviewRequested && !f.authored)
+      .map((f) => f.pr)
+      .sort(byUpdatedAtDesc),
+    authoredPrs: flagged
+      .filter((f) => f.authored)
+      .map((f) => f.pr)
+      .sort(byUpdatedAtDesc),
+  };
+}
+
 export async function getWorkHubSnapshot(): Promise<WorkHubSnapshot> {
   const projectRows = await db.select({ id: projects.id, name: projects.name }).from(projects);
   const projectNames = new Map(projectRows.map((p) => [p.id, p.name]));
@@ -31,7 +49,7 @@ export async function getWorkHubSnapshot(): Promise<WorkHubSnapshot> {
     .orderBy(desc(tasks.updatedAt));
 
   if (taskRows.length === 0) {
-    return { projects: projectRows, items: [] };
+    return { projects: projectRows, items: [], ...(await getViewerPrLists()) };
   }
 
   const taskIds = taskRows.map((t) => t.id);
@@ -135,5 +153,5 @@ export async function getWorkHubSnapshot(): Promise<WorkHubSnapshot> {
     };
   });
 
-  return { projects: projectRows, items };
+  return { projects: projectRows, items, ...(await getViewerPrLists()) };
 }

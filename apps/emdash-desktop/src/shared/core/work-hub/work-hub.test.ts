@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import type { PullRequest, PullRequestCheck } from '@shared/core/pull-requests/pull-requests';
 import type { WorkHubItem } from './work-hub';
-import { aggregateAgentStatus, groupWorkHubItems, sectionForItem } from './work-hub';
+import {
+  aggregateAgentStatus,
+  authoredPrNeedsAttention,
+  groupWorkHubItems,
+  prHasFailingChecks,
+  sectionForItem,
+  sortAuthoredPrs,
+} from './work-hub';
 
 describe('aggregateAgentStatus', () => {
   it('returns null status for an empty conversation list', () => {
@@ -152,6 +160,102 @@ describe('groupWorkHubItems', () => {
       'pinned',
       'newer',
       'older',
+    ]);
+  });
+});
+
+function check(conclusion: string | null, status = 'COMPLETED'): PullRequestCheck {
+  return {
+    id: 'check-1',
+    pullRequestUrl: 'https://github.com/acme/repo/pull/1',
+    commitSha: 'sha',
+    name: 'ci',
+    status,
+    conclusion,
+    detailsUrl: null,
+    startedAt: null,
+    completedAt: null,
+    workflowName: null,
+    appName: null,
+    appLogoUrl: null,
+  };
+}
+
+function pr(overrides: Partial<PullRequest>): PullRequest {
+  return {
+    url: 'https://github.com/acme/repo/pull/1',
+    provider: 'github',
+    repositoryUrl: 'https://github.com/acme/repo',
+    baseRefName: 'main',
+    baseRefOid: 'base',
+    headRepositoryUrl: 'https://github.com/acme/repo',
+    headRefName: 'feature',
+    headRefOid: 'head',
+    identifier: '#1',
+    title: 'A PR',
+    description: null,
+    status: 'open',
+    isDraft: false,
+    additions: null,
+    deletions: null,
+    changedFiles: null,
+    commitCount: null,
+    mergeableStatus: 'MERGEABLE',
+    mergeStateStatus: 'CLEAN',
+    reviewDecision: null,
+    createdAt: '2026-07-01T00:00:00.000Z',
+    updatedAt: '2026-07-29T00:00:00.000Z',
+    author: null,
+    labels: [],
+    assignees: [],
+    checks: [],
+    ...overrides,
+  };
+}
+
+describe('prHasFailingChecks', () => {
+  it('treats FAILURE, TIMED_OUT, and ACTION_REQUIRED conclusions as failing', () => {
+    expect(prHasFailingChecks(pr({ checks: [check('FAILURE')] }))).toBe(true);
+    expect(prHasFailingChecks(pr({ checks: [check('TIMED_OUT')] }))).toBe(true);
+    expect(prHasFailingChecks(pr({ checks: [check('ACTION_REQUIRED')] }))).toBe(true);
+  });
+
+  it('ignores successful, neutral, and still-running checks', () => {
+    expect(prHasFailingChecks(pr({ checks: [check('SUCCESS')] }))).toBe(false);
+    expect(prHasFailingChecks(pr({ checks: [check('NEUTRAL')] }))).toBe(false);
+    expect(prHasFailingChecks(pr({ checks: [check(null, 'IN_PROGRESS')] }))).toBe(false);
+    expect(prHasFailingChecks(pr({ checks: [] }))).toBe(false);
+  });
+});
+
+describe('authoredPrNeedsAttention', () => {
+  it('flags failing checks, conflicts, and changes requested on open PRs', () => {
+    expect(authoredPrNeedsAttention(pr({ checks: [check('FAILURE')] }))).toBe(true);
+    expect(authoredPrNeedsAttention(pr({ mergeableStatus: 'CONFLICTING' }))).toBe(true);
+    expect(authoredPrNeedsAttention(pr({ reviewDecision: 'CHANGES_REQUESTED' }))).toBe(true);
+  });
+
+  it('never flags healthy or non-open PRs', () => {
+    expect(authoredPrNeedsAttention(pr({}))).toBe(false);
+    expect(authoredPrNeedsAttention(pr({ status: 'merged', checks: [check('FAILURE')] }))).toBe(
+      false
+    );
+  });
+});
+
+describe('sortAuthoredPrs', () => {
+  it('sorts needs-attention first, then most recently updated', () => {
+    const healthyNewer = pr({ url: 'a', updatedAt: '2026-07-29T00:00:00.000Z' });
+    const healthyOlder = pr({ url: 'b', updatedAt: '2026-07-27T00:00:00.000Z' });
+    const failingOlder = pr({
+      url: 'c',
+      updatedAt: '2026-07-20T00:00:00.000Z',
+      checks: [check('FAILURE')],
+    });
+    expect(sortAuthoredPrs([healthyOlder, healthyNewer, failingOlder]).map((p) => p.url)).toEqual([
+      'c',
+      'a',
+      'b',
     ]);
   });
 });

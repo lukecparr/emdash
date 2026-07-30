@@ -3,9 +3,15 @@ import { useMemo } from 'react';
 import { PageHeader } from '@renderer/lib/components/page-header';
 import { EmptyState } from '@renderer/lib/ui/empty-state';
 import { Spinner } from '@renderer/lib/ui/spinner';
+import type { PullRequest } from '@shared/core/pull-requests/pull-requests';
 import type { WorkHubItem, WorkHubSection } from '@shared/core/work-hub/work-hub';
-import { groupWorkHubItems, workHubSections } from '@shared/core/work-hub/work-hub';
+import {
+  groupWorkHubItems,
+  sortAuthoredPrs,
+  workHubSections,
+} from '@shared/core/work-hub/work-hub';
 import { useWorkHub, useWorkHubEventBridge } from '../use-work-hub';
+import { WorkHubPrRow } from './work-hub-pr-row';
 import { WorkHubRow } from './work-hub-row';
 
 const SECTION_LABELS: Record<WorkHubSection, string> = {
@@ -15,6 +21,23 @@ const SECTION_LABELS: Record<WorkHubSection, string> = {
   planned: 'Planned',
   done: 'Recently done',
 };
+
+function WorkHubPrSectionList({ title, prs }: { title: string; prs: PullRequest[] }) {
+  if (prs.length === 0) return null;
+  return (
+    <section className="flex flex-col">
+      <div className="flex items-center gap-2 pt-6 pb-1">
+        <h3 className="text-sm font-medium text-foreground">{title}</h3>
+        <span className="text-xs text-foreground-passive">{prs.length}</span>
+      </div>
+      <div>
+        {prs.map((pr, index) => (
+          <WorkHubPrRow key={pr.url} pr={pr} isLast={index === prs.length - 1} />
+        ))}
+      </div>
+    </section>
+  );
+}
 
 function WorkHubSectionList({ section, items }: { section: WorkHubSection; items: WorkHubItem[] }) {
   if (items.length === 0) return null;
@@ -42,7 +65,17 @@ export function WorkHub() {
     [snapshot.data]
   );
 
-  const isEmpty = groups !== undefined && workHubSections.every((s) => groups[s].length === 0);
+  const reviewRequests = snapshot.data?.reviewRequests ?? [];
+  const authoredPrs = useMemo(
+    () => (snapshot.data ? sortAuthoredPrs(snapshot.data.authoredPrs) : []),
+    [snapshot.data]
+  );
+
+  const isEmpty =
+    groups !== undefined &&
+    workHubSections.every((s) => groups[s].length === 0) &&
+    reviewRequests.length === 0 &&
+    authoredPrs.length === 0;
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background text-foreground">
@@ -66,9 +99,16 @@ export function WorkHub() {
                 className="bg-transparent py-16"
               />
             ) : (
-              workHubSections.map((section) => (
-                <WorkHubSectionList key={section} section={section} items={groups[section]} />
-              ))
+              <>
+                <WorkHubSectionList section="attention" items={groups.attention} />
+                <WorkHubPrSectionList title="Review requests" prs={reviewRequests} />
+                <WorkHubPrSectionList title="My PRs" prs={authoredPrs} />
+                {workHubSections
+                  .filter((section) => section !== 'attention')
+                  .map((section) => (
+                    <WorkHubSectionList key={section} section={section} items={groups[section]} />
+                  ))}
+              </>
             )}
           </div>
         </div>

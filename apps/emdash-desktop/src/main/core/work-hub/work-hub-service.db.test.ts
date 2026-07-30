@@ -6,6 +6,7 @@ import {
   projectRemotes,
   projects,
   pullRequests,
+  pullRequestViewerFlags,
   tasks,
   workspaces,
 } from '@main/db/schema';
@@ -97,6 +98,72 @@ describe('getWorkHubSnapshot', () => {
       ])
     );
     expect(snapshot.items).toEqual([]);
+    expect(snapshot.reviewRequests).toEqual([]);
+    expect(snapshot.authoredPrs).toEqual([]);
+  });
+
+  it('returns viewer PR lists with authored excluded from review requests', async () => {
+    const EXTERNAL_REPO = 'https://github.com/other/lib';
+    await fixture.db.insert(pullRequests).values([
+      prRow({
+        url: `${EXTERNAL_REPO}/pull/1`,
+        repositoryUrl: EXTERNAL_REPO,
+        headRepositoryUrl: EXTERNAL_REPO,
+        identifier: '#1',
+        headRefName: 'review-me',
+      }),
+      prRow({
+        url: `${EXTERNAL_REPO}/pull/2`,
+        repositoryUrl: EXTERNAL_REPO,
+        headRepositoryUrl: EXTERNAL_REPO,
+        identifier: '#2',
+        headRefName: 'mine',
+      }),
+      prRow({
+        url: `${EXTERNAL_REPO}/pull/3`,
+        repositoryUrl: EXTERNAL_REPO,
+        headRepositoryUrl: EXTERNAL_REPO,
+        identifier: '#3',
+        headRefName: 'closed-one',
+        status: 'closed',
+      }),
+    ]);
+    await fixture.db.insert(pullRequestViewerFlags).values([
+      // Review requested by one account, authored per another: authored wins exclusion.
+      {
+        pullRequestUrl: `${EXTERNAL_REPO}/pull/2`,
+        providerAccountId: 'github.com:1',
+        reviewRequested: 1,
+        authored: 0,
+        syncedAt: NOW,
+      },
+      {
+        pullRequestUrl: `${EXTERNAL_REPO}/pull/2`,
+        providerAccountId: 'github.com:2',
+        reviewRequested: 0,
+        authored: 1,
+        syncedAt: NOW,
+      },
+      {
+        pullRequestUrl: `${EXTERNAL_REPO}/pull/1`,
+        providerAccountId: 'github.com:1',
+        reviewRequested: 1,
+        authored: 0,
+        syncedAt: NOW,
+      },
+      // Closed PRs never surface even when flagged.
+      {
+        pullRequestUrl: `${EXTERNAL_REPO}/pull/3`,
+        providerAccountId: 'github.com:1',
+        reviewRequested: 1,
+        authored: 1,
+        syncedAt: NOW,
+      },
+    ]);
+
+    const snapshot = await getWorkHubSnapshot();
+    expect(snapshot.reviewRequests.map((pr) => pr.url)).toEqual([`${EXTERNAL_REPO}/pull/1`]);
+    expect(snapshot.authoredPrs.map((pr) => pr.url)).toEqual([`${EXTERNAL_REPO}/pull/2`]);
   });
 
   it('excludes archived tasks and joins the project name', async () => {
