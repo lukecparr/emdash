@@ -81,6 +81,28 @@ describe('linear issues plugin', () => {
     });
   });
 
+  it('filters by assignee only when assignedToMe is requested', async () => {
+    rawRequest.mockResolvedValue({
+      data: { issues: { nodes: [linearIssueNode()] } },
+    });
+
+    await issues.listIssues(makeHost(), { limit: 10 });
+    expect(rawRequest).toHaveBeenLastCalledWith(
+      expect.not.stringContaining('assignee: { isMe: { eq: true } }'),
+      { limit: 10 }
+    );
+
+    const result = await issues.listIssues(makeHost(), { limit: 10, assignedToMe: true });
+    expect(rawRequest).toHaveBeenLastCalledWith(
+      expect.stringContaining('assignee: { isMe: { eq: true } }'),
+      { limit: 10 }
+    );
+    expect(result).toEqual({
+      success: true,
+      data: [expect.objectContaining({ identifier: 'GEN-626' })],
+    });
+  });
+
   it('maps branchName from searched Linear issues without activity', async () => {
     rawRequest.mockResolvedValue({
       data: { searchIssues: { nodes: [linearIssueNode()] } },

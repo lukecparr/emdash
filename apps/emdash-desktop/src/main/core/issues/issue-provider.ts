@@ -12,6 +12,8 @@ export type IssueQueryOpts = {
   projectPath?: string;
   remote?: string;
   repositoryUrl?: string;
+  /** Restrict results to issues assigned to the connected account. */
+  assignedToMe?: boolean;
 };
 
 export type IssueSearchOpts = IssueQueryOpts & {

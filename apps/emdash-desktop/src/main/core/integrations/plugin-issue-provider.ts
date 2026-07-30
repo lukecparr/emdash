@@ -68,6 +68,7 @@ export function createPluginIssueProvider(plugin: IssuesPluginProvider): IssuePr
       const result = await plugin.behavior.issues?.listIssues(host, {
         limit: clampIssueProviderLimit(opts.limit, DEFAULT_LIST_LIMIT),
         repositoryUrl: repositoryUrl(opts),
+        assignedToMe: opts.assignedToMe,
       });
       if (!result) return ok([]);
       if (!result.success) return err(result.error);
