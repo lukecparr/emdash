@@ -31,13 +31,19 @@ export interface WorkHubItem {
   agent: WorkHubAgentSummary;
 }
 
+/** A viewer-synced PR paired with the Emdash project that owns its repository. */
+export interface WorkHubPrItem {
+  projectId: string;
+  pr: PullRequest;
+}
+
 export interface WorkHubSnapshot {
   projects: WorkHubProjectRef[];
   items: WorkHubItem[];
   /** Open PRs where the viewer's review is requested (excluding viewer-authored), updatedAt desc. */
-  reviewRequests: PullRequest[];
+  reviewRequests: WorkHubPrItem[];
   /** All open PRs authored by the viewer, updatedAt desc. */
-  authoredPrs: PullRequest[];
+  authoredPrs: WorkHubPrItem[];
 }
 
 const FAILING_CHECK_CONCLUSIONS = new Set(['FAILURE', 'TIMED_OUT', 'ACTION_REQUIRED']);
@@ -61,12 +67,12 @@ export function authoredPrNeedsAttention(
 }
 
 /** Sort for the "My PRs" section: needs-attention first, then most recently updated. */
-export function sortAuthoredPrs(prs: readonly PullRequest[]): PullRequest[] {
-  return [...prs].sort((a, b) => {
-    const aAttention = authoredPrNeedsAttention(a);
-    const bAttention = authoredPrNeedsAttention(b);
+export function sortAuthoredPrs(items: readonly WorkHubPrItem[]): WorkHubPrItem[] {
+  return [...items].sort((a, b) => {
+    const aAttention = authoredPrNeedsAttention(a.pr);
+    const bAttention = authoredPrNeedsAttention(b.pr);
     if (aAttention !== bAttention) return aAttention ? -1 : 1;
-    return b.updatedAt.localeCompare(a.updatedAt);
+    return b.pr.updatedAt.localeCompare(a.pr.updatedAt);
   });
 }
 

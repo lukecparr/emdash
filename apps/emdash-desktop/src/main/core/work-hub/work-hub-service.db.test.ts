@@ -102,27 +102,22 @@ describe('getWorkHubSnapshot', () => {
     expect(snapshot.authoredPrs).toEqual([]);
   });
 
-  it('returns viewer PR lists with authored excluded from review requests', async () => {
-    const EXTERNAL_REPO = 'https://github.com/other/lib';
+  it('returns viewer PR lists with authored excluded and projects mapped per repo', async () => {
     await fixture.db.insert(pullRequests).values([
       prRow({
-        url: `${EXTERNAL_REPO}/pull/1`,
-        repositoryUrl: EXTERNAL_REPO,
-        headRepositoryUrl: EXTERNAL_REPO,
+        url: `${REPO_A}/pull/1`,
         identifier: '#1',
         headRefName: 'review-me',
       }),
       prRow({
-        url: `${EXTERNAL_REPO}/pull/2`,
-        repositoryUrl: EXTERNAL_REPO,
-        headRepositoryUrl: EXTERNAL_REPO,
+        url: `${REPO_B}/pull/2`,
+        repositoryUrl: REPO_B,
+        headRepositoryUrl: REPO_B,
         identifier: '#2',
         headRefName: 'mine',
       }),
       prRow({
-        url: `${EXTERNAL_REPO}/pull/3`,
-        repositoryUrl: EXTERNAL_REPO,
-        headRepositoryUrl: EXTERNAL_REPO,
+        url: `${REPO_A}/pull/3`,
         identifier: '#3',
         headRefName: 'closed-one',
         status: 'closed',
@@ -131,21 +126,21 @@ describe('getWorkHubSnapshot', () => {
     await fixture.db.insert(pullRequestViewerFlags).values([
       // Review requested by one account, authored per another: authored wins exclusion.
       {
-        pullRequestUrl: `${EXTERNAL_REPO}/pull/2`,
+        pullRequestUrl: `${REPO_B}/pull/2`,
         providerAccountId: 'github.com:1',
         reviewRequested: 1,
         authored: 0,
         syncedAt: NOW,
       },
       {
-        pullRequestUrl: `${EXTERNAL_REPO}/pull/2`,
+        pullRequestUrl: `${REPO_B}/pull/2`,
         providerAccountId: 'github.com:2',
         reviewRequested: 0,
         authored: 1,
         syncedAt: NOW,
       },
       {
-        pullRequestUrl: `${EXTERNAL_REPO}/pull/1`,
+        pullRequestUrl: `${REPO_A}/pull/1`,
         providerAccountId: 'github.com:1',
         reviewRequested: 1,
         authored: 0,
@@ -153,7 +148,7 @@ describe('getWorkHubSnapshot', () => {
       },
       // Closed PRs never surface even when flagged.
       {
-        pullRequestUrl: `${EXTERNAL_REPO}/pull/3`,
+        pullRequestUrl: `${REPO_A}/pull/3`,
         providerAccountId: 'github.com:1',
         reviewRequested: 1,
         authored: 1,
@@ -162,8 +157,12 @@ describe('getWorkHubSnapshot', () => {
     ]);
 
     const snapshot = await getWorkHubSnapshot();
-    expect(snapshot.reviewRequests.map((pr) => pr.url)).toEqual([`${EXTERNAL_REPO}/pull/1`]);
-    expect(snapshot.authoredPrs.map((pr) => pr.url)).toEqual([`${EXTERNAL_REPO}/pull/2`]);
+    expect(
+      snapshot.reviewRequests.map((item) => ({ url: item.pr.url, projectId: item.projectId }))
+    ).toEqual([{ url: `${REPO_A}/pull/1`, projectId: 'project-a' }]);
+    expect(
+      snapshot.authoredPrs.map((item) => ({ url: item.pr.url, projectId: item.projectId }))
+    ).toEqual([{ url: `${REPO_B}/pull/2`, projectId: 'project-b' }]);
   });
 
   it('excludes archived tasks and joins the project name', async () => {

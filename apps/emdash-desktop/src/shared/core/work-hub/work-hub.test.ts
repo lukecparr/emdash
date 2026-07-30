@@ -245,17 +245,19 @@ describe('authoredPrNeedsAttention', () => {
 
 describe('sortAuthoredPrs', () => {
   it('sorts needs-attention first, then most recently updated', () => {
-    const healthyNewer = pr({ url: 'a', updatedAt: '2026-07-29T00:00:00.000Z' });
-    const healthyOlder = pr({ url: 'b', updatedAt: '2026-07-27T00:00:00.000Z' });
-    const failingOlder = pr({
+    const prItem = (overrides: Partial<PullRequest>) => ({
+      projectId: 'project-1',
+      pr: pr(overrides),
+    });
+    const healthyNewer = prItem({ url: 'a', updatedAt: '2026-07-29T00:00:00.000Z' });
+    const healthyOlder = prItem({ url: 'b', updatedAt: '2026-07-27T00:00:00.000Z' });
+    const failingOlder = prItem({
       url: 'c',
       updatedAt: '2026-07-20T00:00:00.000Z',
       checks: [check('FAILURE')],
     });
-    expect(sortAuthoredPrs([healthyOlder, healthyNewer, failingOlder]).map((p) => p.url)).toEqual([
-      'c',
-      'a',
-      'b',
-    ]);
+    expect(
+      sortAuthoredPrs([healthyOlder, healthyNewer, failingOlder]).map((i) => i.pr.url)
+    ).toEqual(['c', 'a', 'b']);
   });
 });

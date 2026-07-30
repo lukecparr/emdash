@@ -3,8 +3,7 @@ import { useMemo } from 'react';
 import { PageHeader } from '@renderer/lib/components/page-header';
 import { EmptyState } from '@renderer/lib/ui/empty-state';
 import { Spinner } from '@renderer/lib/ui/spinner';
-import type { PullRequest } from '@shared/core/pull-requests/pull-requests';
-import type { WorkHubItem, WorkHubSection } from '@shared/core/work-hub/work-hub';
+import type { WorkHubItem, WorkHubPrItem, WorkHubSection } from '@shared/core/work-hub/work-hub';
 import {
   groupWorkHubItems,
   sortAuthoredPrs,
@@ -22,17 +21,17 @@ const SECTION_LABELS: Record<WorkHubSection, string> = {
   done: 'Recently done',
 };
 
-function WorkHubPrSectionList({ title, prs }: { title: string; prs: PullRequest[] }) {
-  if (prs.length === 0) return null;
+function WorkHubPrSectionList({ title, items }: { title: string; items: WorkHubPrItem[] }) {
+  if (items.length === 0) return null;
   return (
     <section className="flex flex-col">
       <div className="flex items-center gap-2 pt-6 pb-1">
         <h3 className="text-sm font-medium text-foreground">{title}</h3>
-        <span className="text-xs text-foreground-passive">{prs.length}</span>
+        <span className="text-xs text-foreground-passive">{items.length}</span>
       </div>
       <div>
-        {prs.map((pr, index) => (
-          <WorkHubPrRow key={pr.url} pr={pr} isLast={index === prs.length - 1} />
+        {items.map((item, index) => (
+          <WorkHubPrRow key={item.pr.url} item={item} isLast={index === items.length - 1} />
         ))}
       </div>
     </section>
@@ -101,8 +100,8 @@ export function WorkHub() {
             ) : (
               <>
                 <WorkHubSectionList section="attention" items={groups.attention} />
-                <WorkHubPrSectionList title="Review requests" prs={reviewRequests} />
-                <WorkHubPrSectionList title="My PRs" prs={authoredPrs} />
+                <WorkHubPrSectionList title="Review requests" items={reviewRequests} />
+                <WorkHubPrSectionList title="My PRs" items={authoredPrs} />
                 {workHubSections
                   .filter((section) => section !== 'attention')
                   .map((section) => (

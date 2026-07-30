@@ -5,7 +5,7 @@ import type { AgentStatus } from '@shared/core/agents/agentEvents';
 import type { PullRequest } from '@shared/core/pull-requests/pull-requests';
 import { selectCurrentPr } from '@shared/core/pull-requests/pull-requests';
 import type { TaskLifecycleStatus } from '@shared/core/tasks/tasks';
-import type { WorkHubItem, WorkHubSnapshot } from '@shared/core/work-hub/work-hub';
+import type { WorkHubItem, WorkHubPrItem, WorkHubSnapshot } from '@shared/core/work-hub/work-hub';
 import { aggregateAgentStatus } from '@shared/core/work-hub/work-hub';
 import { prQueryService } from '../pull-requests/pr-query-service';
 
@@ -24,16 +24,35 @@ async function getViewerPrLists(): Promise<
   Pick<WorkHubSnapshot, 'reviewRequests' | 'authoredPrs'>
 > {
   const flagged = await prQueryService.getViewerFlaggedPullRequests();
-  const byUpdatedAtDesc = (a: PullRequest, b: PullRequest) =>
-    b.updatedAt.localeCompare(a.updatedAt);
+
+  // Map each PR to the project owning its repository so the renderer can
+  // launch the create-task (checkout PR in worktree) flow. First project
+  // wins when several share a remote.
+  const remoteRows = await db
+    .select({ projectId: projectRemotes.projectId, remoteUrl: projectRemotes.remoteUrl })
+    .from(projectRemotes);
+  const projectByRemoteUrl = new Map<string, string>();
+  for (const row of remoteRows) {
+    if (!projectByRemoteUrl.has(row.remoteUrl)) {
+      projectByRemoteUrl.set(row.remoteUrl, row.projectId);
+    }
+  }
+  const toItem = (pr: PullRequest): WorkHubPrItem[] => {
+    const projectId =
+      projectByRemoteUrl.get(pr.repositoryUrl) ?? projectByRemoteUrl.get(pr.headRepositoryUrl);
+    return projectId === undefined ? [] : [{ projectId, pr }];
+  };
+
+  const byUpdatedAtDesc = (a: WorkHubPrItem, b: WorkHubPrItem) =>
+    b.pr.updatedAt.localeCompare(a.pr.updatedAt);
   return {
     reviewRequests: flagged
       .filter((f) => f.reviewRequested && !f.authored)
-      .map((f) => f.pr)
+      .flatMap((f) => toItem(f.pr))
       .sort(byUpdatedAtDesc),
     authoredPrs: flagged
       .filter((f) => f.authored)
-      .map((f) => f.pr)
+      .flatMap((f) => toItem(f.pr))
       .sort(byUpdatedAtDesc),
   };
 }
