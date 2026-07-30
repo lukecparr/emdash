@@ -157,6 +157,22 @@ export class PrQueryService {
     return fetchRelated(rows);
   }
 
+  async getPullRequestsByBranches(
+    branches: string[],
+    repositoryUrls: string[]
+  ): Promise<PullRequest[]> {
+    if (branches.length === 0 || repositoryUrls.length === 0) return [];
+
+    const rows = await db
+      .select()
+      .from(pullRequests)
+      .where(
+        and(inArray(pullRequests.headRefName, branches), pullRequestRepositoryScope(repositoryUrls))
+      );
+
+    return fetchRelated(rows);
+  }
+
   async getTaskPullRequests(taskBranch: string, repositoryUrl: string): Promise<PullRequest[]> {
     const rows = await db
       .select()

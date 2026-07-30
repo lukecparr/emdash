@@ -127,4 +127,48 @@ describe('PrQueryService', () => {
       })
     ).resolves.toMatchObject([{ url: 'https://github.com/acme/repo/pull/1' }]);
   });
+
+  it('fetches PRs for multiple branches scoped to the given repositories', async () => {
+    await fixture.db.insert(pullRequests).values([
+      prRow({
+        url: 'https://github.com/acme/repo/pull/10',
+        identifier: '#10',
+        headRefName: 'feature/one',
+      }),
+      prRow({
+        url: 'https://github.com/acme/repo/pull/11',
+        identifier: '#11',
+        headRefName: 'feature/two',
+      }),
+      prRow({
+        url: 'https://github.com/acme/repo/pull/12',
+        identifier: '#12',
+        headRefName: 'feature/unmatched',
+      }),
+      prRow({
+        url: 'https://github.com/acme/other/pull/13',
+        repositoryUrl: OTHER_REPOSITORY_URL,
+        headRepositoryUrl: OTHER_REPOSITORY_URL,
+        identifier: '#13',
+        title: 'Same branch, other repo',
+        headRefName: 'feature/one',
+      }),
+    ]);
+
+    const prs = await prQueryService.getPullRequestsByBranches(
+      ['feature/one', 'feature/two'],
+      [REPOSITORY_URL]
+    );
+    expect(prs.map((pr) => pr.url).sort()).toEqual([
+      'https://github.com/acme/repo/pull/10',
+      'https://github.com/acme/repo/pull/11',
+    ]);
+
+    await expect(prQueryService.getPullRequestsByBranches([], [REPOSITORY_URL])).resolves.toEqual(
+      []
+    );
+    await expect(prQueryService.getPullRequestsByBranches(['feature/one'], [])).resolves.toEqual(
+      []
+    );
+  });
 });
