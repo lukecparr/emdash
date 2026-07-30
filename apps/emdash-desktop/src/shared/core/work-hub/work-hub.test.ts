@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import type { LinkedIssue } from '@shared/core/linked-issue';
 import type { PullRequest, PullRequestCheck } from '@shared/core/pull-requests/pull-requests';
 import type { WorkHubItem } from './work-hub';
 import {
   aggregateAgentStatus,
   authoredPrNeedsAttention,
+  filterUnstartedIssues,
   groupWorkHubItems,
   prHasFailingChecks,
   sectionForItem,
@@ -161,6 +163,39 @@ describe('groupWorkHubItems', () => {
       'newer',
       'older',
     ]);
+  });
+});
+
+function linkedIssue(
+  identifier: string,
+  provider: LinkedIssue['provider'] = 'linear'
+): LinkedIssue {
+  return {
+    provider,
+    identifier,
+    title: `Issue ${identifier}`,
+    url: `https://linear.app/acme/issue/${identifier}`,
+  };
+}
+
+describe('filterUnstartedIssues', () => {
+  it('drops issues already linked to a task, matching provider and identifier', () => {
+    const issues = [linkedIssue('GEN-1'), linkedIssue('GEN-2'), linkedIssue('GEN-3', 'jira')];
+    const items = [
+      item({ id: 'a', linkedIssue: linkedIssue('GEN-1') }),
+      // Same identifier under another provider must not shadow the Linear one.
+      item({ id: 'b', linkedIssue: linkedIssue('GEN-2', 'jira') }),
+      item({ id: 'c' }),
+    ];
+    expect(filterUnstartedIssues(issues, items).map((i) => i.identifier)).toEqual([
+      'GEN-2',
+      'GEN-3',
+    ]);
+  });
+
+  it('keeps everything when no tasks have linked issues', () => {
+    expect(filterUnstartedIssues([linkedIssue('GEN-1')], [item({})])).toHaveLength(1);
+    expect(filterUnstartedIssues([], [])).toEqual([]);
   });
 });
 

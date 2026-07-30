@@ -23,6 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@renderer/lib/ui/dialog';
+import type { LinkedIssue } from '@shared/core/linked-issue';
 import type { PullRequest } from '@shared/core/pull-requests/pull-requests';
 import { LinkedEntitySection } from './linked-entity-section';
 import { TaskNameField } from './task-name-field';
@@ -54,11 +55,13 @@ export const CreateTaskModal = observer(function CreateTaskModal({
   projectId,
   strategy: initialStrategy = 'from-branch',
   initialPR,
+  initialIssue,
   onClose,
 }: BaseModalProps & {
   projectId?: string;
   strategy?: 'from-branch' | 'from-issue' | 'from-pull-request';
   initialPR?: PullRequest;
+  initialIssue?: LinkedIssue;
 }) {
   const selectedProjectId = useDefaultProjectId(projectId);
 
@@ -88,6 +91,7 @@ export const CreateTaskModal = observer(function CreateTaskModal({
   }, []); // computed once on mount
 
   const resolvedInitialPR = initialStrategy === 'from-pull-request' ? initialPR : undefined;
+  const resolvedInitialIssue = initialStrategy === 'from-issue' ? initialIssue : undefined;
   const state = useCreateTaskState(
     selectedProjectId,
     defaultBranch,
@@ -95,7 +99,8 @@ export const CreateTaskModal = observer(function CreateTaskModal({
     currentBranch,
     repositoryWorkspaceId,
     resolvedInitialPR,
-    defaultLinkedType
+    defaultLinkedType,
+    resolvedInitialIssue
   );
 
   const { autoApproveByDefault, includeIssueContextByDefault } = useTaskSettings();
