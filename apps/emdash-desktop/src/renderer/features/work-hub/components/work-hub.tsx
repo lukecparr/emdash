@@ -3,13 +3,22 @@ import { useMemo } from 'react';
 import { PageHeader } from '@renderer/lib/components/page-header';
 import { EmptyState } from '@renderer/lib/ui/empty-state';
 import { Spinner } from '@renderer/lib/ui/spinner';
-import type { WorkHubItem, WorkHubPrItem, WorkHubSection } from '@shared/core/work-hub/work-hub';
+import type { LinkedIssue } from '@shared/core/linked-issue';
+import type {
+  WorkHubItem,
+  WorkHubPrItem,
+  WorkHubProjectRef,
+  WorkHubSection,
+} from '@shared/core/work-hub/work-hub';
 import {
+  filterUnstartedIssues,
   groupWorkHubItems,
   sortAuthoredPrs,
   workHubSections,
 } from '@shared/core/work-hub/work-hub';
+import { useAssignedIssues } from '../use-assigned-issues';
 import { useWorkHub, useWorkHubEventBridge } from '../use-work-hub';
+import { WorkHubIssueRow } from './work-hub-issue-row';
 import { WorkHubPrRow } from './work-hub-pr-row';
 import { WorkHubRow } from './work-hub-row';
 
@@ -38,6 +47,34 @@ function WorkHubPrSectionList({ title, items }: { title: string; items: WorkHubP
   );
 }
 
+function WorkHubIssueSectionList({
+  issues,
+  projects,
+}: {
+  issues: LinkedIssue[];
+  projects: WorkHubProjectRef[];
+}) {
+  if (issues.length === 0) return null;
+  return (
+    <section className="flex flex-col">
+      <div className="flex items-center gap-2 pt-6 pb-1">
+        <h3 className="text-sm font-medium text-foreground">Assigned issues</h3>
+        <span className="text-xs text-foreground-passive">{issues.length}</span>
+      </div>
+      <div>
+        {issues.map((issue, index) => (
+          <WorkHubIssueRow
+            key={`${issue.provider}:${issue.identifier}`}
+            issue={issue}
+            projects={projects}
+            isLast={index === issues.length - 1}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function WorkHubSectionList({ section, items }: { section: WorkHubSection; items: WorkHubItem[] }) {
   if (items.length === 0) return null;
   return (
@@ -58,6 +95,7 @@ function WorkHubSectionList({ section, items }: { section: WorkHubSection; items
 export function WorkHub() {
   useWorkHubEventBridge();
   const snapshot = useWorkHub();
+  const assignedIssues = useAssignedIssues();
 
   const groups = useMemo(
     () => (snapshot.data ? groupWorkHubItems(snapshot.data.items, { now: Date.now() }) : undefined),
@@ -69,12 +107,17 @@ export function WorkHub() {
     () => (snapshot.data ? sortAuthoredPrs(snapshot.data.authoredPrs) : []),
     [snapshot.data]
   );
+  const unstartedIssues = useMemo(
+    () => (snapshot.data ? filterUnstartedIssues(assignedIssues.issues, snapshot.data.items) : []),
+    [snapshot.data, assignedIssues.issues]
+  );
 
   const isEmpty =
     groups !== undefined &&
     workHubSections.every((s) => groups[s].length === 0) &&
     reviewRequests.length === 0 &&
-    authoredPrs.length === 0;
+    authoredPrs.length === 0 &&
+    unstartedIssues.length === 0;
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background text-foreground">
@@ -102,6 +145,10 @@ export function WorkHub() {
                 <WorkHubSectionList section="attention" items={groups.attention} />
                 <WorkHubPrSectionList title="Review requests" items={reviewRequests} />
                 <WorkHubPrSectionList title="My PRs" items={authoredPrs} />
+                <WorkHubIssueSectionList
+                  issues={unstartedIssues}
+                  projects={snapshot.data?.projects ?? []}
+                />
                 {workHubSections
                   .filter((section) => section !== 'attention')
                   .map((section) => (

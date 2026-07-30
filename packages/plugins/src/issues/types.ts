@@ -26,6 +26,9 @@ export type IssueQueryOpts = {
   limit: number;
   /** Resolved repository URL, present when the descriptor requires it. */
   repositoryUrl?: string;
+  /** Restrict results to issues assigned to the connected account. Providers
+   *  whose listing is already viewer-scoped may ignore this. */
+  assignedToMe?: boolean;
 };
 
 export type IssueSearchOpts = IssueQueryOpts & {

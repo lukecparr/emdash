@@ -76,6 +76,22 @@ export function sortAuthoredPrs(items: readonly WorkHubPrItem[]): WorkHubPrItem[
   });
 }
 
+/**
+ * Drop assigned issues already linked to a live task — those surface as
+ * task rows, so listing them again as unstarted issues would duplicate them.
+ */
+export function filterUnstartedIssues(
+  issues: readonly LinkedIssue[],
+  items: readonly Pick<WorkHubItem, 'linkedIssue'>[]
+): LinkedIssue[] {
+  const linked = new Set(
+    items.flatMap((item) =>
+      item.linkedIssue ? [`${item.linkedIssue.provider}:${item.linkedIssue.identifier}`] : []
+    )
+  );
+  return issues.filter((issue) => !linked.has(`${issue.provider}:${issue.identifier}`));
+}
+
 export const workHubSections = ['attention', 'active', 'review', 'planned', 'done'] as const;
 export type WorkHubSection = (typeof workHubSections)[number];
 

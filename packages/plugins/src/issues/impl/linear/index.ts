@@ -27,7 +27,9 @@ export async function listIssues(
   const client = createLinearClient(parsedCredentials.data);
   const sanitizedLimit = clampIssueLimit(opts.limit, 50, 200);
   try {
-    const issues = await queryLinearIssues(client, sanitizedLimit);
+    const issues = await queryLinearIssues(client, sanitizedLimit, {
+      assignedToMe: opts.assignedToMe,
+    });
     return ok(issues.map(toIssueData));
   } catch (error) {
     host.log.warn('Linear listIssues failed', { error });

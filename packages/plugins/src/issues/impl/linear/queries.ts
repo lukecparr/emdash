@@ -161,6 +161,25 @@ const ISSUES_QUERY = `
   }
 `;
 
+const ASSIGNED_ISSUES_QUERY = `
+  ${ISSUE_SUMMARY_FRAGMENT}
+
+  query ListAssignedIssues($limit: Int!) {
+    issues(
+      first: $limit,
+      orderBy: updatedAt,
+      filter: {
+        state: { type: { nin: ["completed", "cancelled"] } },
+        assignee: { isMe: { eq: true } }
+      }
+    ) {
+      nodes {
+        ...IssueSummary
+      }
+    }
+  }
+`;
+
 const SEARCH_QUERY = `
   ${ISSUE_SEARCH_SUMMARY_FRAGMENT}
 
@@ -208,12 +227,14 @@ const ISSUE_HISTORY_QUERY = `
 
 export async function queryLinearIssues(
   client: LinearClient,
-  limit: number
+  limit: number,
+  opts?: { assignedToMe?: boolean }
 ): Promise<LinearIssueSummaryNode[]> {
+  const query = opts?.assignedToMe ? ASSIGNED_ISSUES_QUERY : ISSUES_QUERY;
   const { data } = await client.client.rawRequest<
     { issues: { nodes: LinearIssueSummaryNode[] } },
     { limit: number }
-  >(ISSUES_QUERY, { limit });
+  >(query, { limit });
 
   return data?.issues.nodes ?? [];
 }
