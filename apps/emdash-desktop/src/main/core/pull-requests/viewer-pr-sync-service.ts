@@ -11,6 +11,7 @@ import { githubRateLimiter } from '@main/lib/rate-limiter';
 import { withRetry } from '@main/lib/retry';
 import { viewerPrsUpdatedChannel } from '@shared/core/pull-requests/prEvents';
 import type { PullRequest } from '@shared/core/pull-requests/pull-requests';
+import { parseRepositoryRef } from '@shared/repository-ref';
 import { prSyncEngine, type GqlPrNode, type PrSyncEngine } from './pr-sync-engine';
 import { isPrSyncHostUnreachable, toPrApiError, type PrSyncEngineError } from './pr-sync-errors';
 
@@ -19,8 +20,9 @@ const SEARCH_MAX_RESULTS = 100;
 const AUTHORED_CHECKS_LIMIT = 30;
 const FLAGS_INSERT_CHUNK = 150;
 
-export const REVIEW_REQUESTED_SEARCH = 'is:pr is:open review-requested:@me archived:false';
-export const AUTHORED_SEARCH = 'is:pr is:open author:@me archived:false';
+export const REVIEW_REQUESTED_SEARCH =
+  'is:pr is:open review-requested:@me archived:false sort:updated-desc';
+export const AUTHORED_SEARCH = 'is:pr is:open author:@me archived:false sort:updated-desc';
 
 export interface ViewerAccountRef {
   accountId: string;
@@ -42,10 +44,26 @@ export class ViewerPrSyncService {
 
   /**
    * Sync review-requested and authored open PRs for one account, then rewrite
-   * that account's viewer flags. On failure the account's existing flags are
-   * left untouched so a transient outage never empties the review inbox.
+   * that account's viewer flags. Results are scoped to repositories that are
+   * remotes of an Emdash project — GitHub's `review-requested:@me` otherwise
+   * surfaces stale requests from repos the user hasn't touched in years. On
+   * failure the account's existing flags are left untouched so a transient
+   * outage never empties the review inbox.
    */
   async syncAccount(account: ViewerAccountRef): Promise<Result<void, PrSyncEngineError>> {
+    const remoteRows = await db
+      .select({ remoteUrl: projectRemotes.remoteUrl })
+      .from(projectRemotes);
+    const projectRepoUrls = new Set(remoteRows.map((r) => r.remoteUrl));
+
+    if (projectRepoUrls.size === 0) {
+      await db
+        .delete(pullRequestViewerFlags)
+        .where(eq(pullRequestViewerFlags.providerAccountId, account.accountId));
+      events.emit(viewerPrsUpdatedChannel, { accountId: account.accountId });
+      return ok();
+    }
+
     const octokit = await this.getOctokitFn(account.host, { accountId: account.accountId });
     if (!octokit.success) return err(octokit.error);
 
@@ -63,6 +81,13 @@ export class ViewerPrSyncService {
       }
       return err(apiError);
     }
+
+    const inProjectRepo = (node: GqlPrNode): boolean => {
+      const repositoryUrl = parseRepositoryRef(node.baseRepository?.url)?.repositoryUrl;
+      return repositoryUrl !== undefined && projectRepoUrls.has(repositoryUrl);
+    };
+    reviewNodes = reviewNodes.filter(inProjectRepo);
+    authoredNodes = authoredNodes.filter(inProjectRepo);
 
     const reviewUrls = new Set(reviewNodes.map((n) => n.url));
     const authoredUrls = new Set(authoredNodes.map((n) => n.url));

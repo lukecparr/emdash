@@ -116,7 +116,15 @@ describe('ViewerPrSyncService', () => {
     return fixture.db.select().from(pullRequestViewerFlags);
   }
 
+  async function seedProjectWithRemote(projectId: string, remoteUrl: string) {
+    await fixture.db
+      .insert(projects)
+      .values({ id: projectId, name: projectId, path: `/${projectId}` });
+    await fixture.db.insert(projectRemotes).values({ projectId, remoteName: 'origin', remoteUrl });
+  }
+
   it('writes flags for review-requested and authored PRs, merging both bits for one PR', async () => {
+    await seedProjectWithRemote('seed-project', REPO);
     const both = prNode({ url: `${REPO}/pull/1`, number: 1 });
     const reviewOnly = prNode({ url: `${REPO}/pull/2`, number: 2 });
     const { service } = makeService({
@@ -139,6 +147,7 @@ describe('ViewerPrSyncService', () => {
   });
 
   it('keeps existing flags when the account sync fails', async () => {
+    await seedProjectWithRemote('seed-project', REPO);
     const node = prNode({ url: `${REPO}/pull/1` });
     const good = makeService({ [REVIEW_REQUESTED_SEARCH]: [[node]], [AUTHORED_SEARCH]: [[]] });
     await good.service.syncAccount(ACCOUNT_A);
@@ -154,6 +163,7 @@ describe('ViewerPrSyncService', () => {
   });
 
   it('tracks the same PR independently per account', async () => {
+    await seedProjectWithRemote('seed-project', REPO);
     const node = prNode({ url: `${REPO}/pull/1` });
     const a = makeService({ [REVIEW_REQUESTED_SEARCH]: [[node]], [AUTHORED_SEARCH]: [[]] });
     await a.service.syncAccount(ACCOUNT_A);
@@ -169,6 +179,7 @@ describe('ViewerPrSyncService', () => {
   });
 
   it('paginates search results and skips nodes without a baseRepository', async () => {
+    await seedProjectWithRemote('seed-project', REPO);
     const page1 = [prNode({ url: `${REPO}/pull/1`, number: 1 })];
     const page2 = [
       prNode({ url: `${REPO}/pull/2`, number: 2 }),
@@ -186,6 +197,7 @@ describe('ViewerPrSyncService', () => {
   });
 
   it('syncs checks only for authored open PRs', async () => {
+    await seedProjectWithRemote('seed-project', REPO);
     const authoredOpen = prNode({ url: `${REPO}/pull/1`, number: 1 });
     const authoredMerged = prNode({ url: `${REPO}/pull/2`, number: 2, state: 'MERGED' });
     const reviewOnly = prNode({ url: `${REPO}/pull/3`, number: 3 });
@@ -203,12 +215,9 @@ describe('ViewerPrSyncService', () => {
   });
 
   it('prunes orphaned viewer-only rows but keeps flagged and project-remote rows', async () => {
-    await fixture.db.insert(projects).values({ id: 'p1', name: 'P1', path: '/p1' });
-    await fixture.db.insert(projectRemotes).values({
-      projectId: 'p1',
-      remoteName: 'origin',
-      remoteUrl: PROJECT_REPO,
-    });
+    const FOREIGN_REPO = 'https://github.com/other/ancient';
+    await seedProjectWithRemote('seed-project', REPO);
+    await seedProjectWithRemote('p1', PROJECT_REPO);
 
     const flagged = prNode({ url: `${REPO}/pull/1`, number: 1 });
     const projectPr = prNode({
@@ -217,13 +226,19 @@ describe('ViewerPrSyncService', () => {
       baseRepository: { url: PROJECT_REPO },
       headRepository: { nameWithOwner: 'acme/project', url: PROJECT_REPO, owner: { login: 'a' } },
     });
-    const orphan = prNode({ url: `${REPO}/pull/3`, number: 3 });
+    const orphan = prNode({
+      url: `${FOREIGN_REPO}/pull/3`,
+      number: 3,
+      baseRepository: { url: FOREIGN_REPO },
+      headRepository: { nameWithOwner: 'other/ancient', url: FOREIGN_REPO, owner: { login: 'o' } },
+    });
 
     const { service, engine } = makeService({
       [REVIEW_REQUESTED_SEARCH]: [[flagged]],
       [AUTHORED_SEARCH]: [[]],
     });
-    // Seed all three rows, then flag only the first via a real sync.
+    // Seed all three rows (bypassing the project filter), then flag only the
+    // first via a real sync. The foreign, unflagged row is the orphan.
     await engine.upsertSearchResults([flagged, projectPr, orphan]);
     await service.syncAccount(ACCOUNT_A);
 
@@ -234,6 +249,7 @@ describe('ViewerPrSyncService', () => {
   });
 
   it('clears all flags when no accounts remain', async () => {
+    await seedProjectWithRemote('seed-project', REPO);
     const node = prNode({ url: `${REPO}/pull/1` });
     const { service } = makeService({
       [REVIEW_REQUESTED_SEARCH]: [[node]],
@@ -245,17 +261,46 @@ describe('ViewerPrSyncService', () => {
     await service.pruneFlagsForMissingAccounts([]);
     expect(await allFlags()).toHaveLength(0);
 
+    // The row survives pruning because its repo is still a project remote.
     await service.pruneOrphanPrRows();
-    expect(await fixture.db.select().from(pullRequests)).toHaveLength(0);
+    expect(await fixture.db.select().from(pullRequests)).toHaveLength(1);
+  });
+
+  it('ignores PRs from repos that are not Emdash project remotes', async () => {
+    await seedProjectWithRemote('p1', PROJECT_REPO);
+    const inProject = prNode({
+      url: `${PROJECT_REPO}/pull/1`,
+      number: 1,
+      baseRepository: { url: PROJECT_REPO },
+      headRepository: { nameWithOwner: 'acme/project', url: PROJECT_REPO, owner: { login: 'a' } },
+    });
+    const foreign = prNode({ url: `${REPO}/pull/2`, number: 2 });
+    const { service } = makeService({
+      [REVIEW_REQUESTED_SEARCH]: [[inProject, foreign]],
+      [AUTHORED_SEARCH]: [[]],
+    });
+
+    await service.syncAccount(ACCOUNT_A);
+
+    const flags = await allFlags();
+    expect(flags.map((f) => f.pullRequestUrl)).toEqual([`${PROJECT_REPO}/pull/1`]);
+    expect((await fixture.db.select().from(pullRequests)).map((r) => r.url)).toEqual([
+      `${PROJECT_REPO}/pull/1`,
+    ]);
+  });
+
+  it('clears account flags without searching when no projects exist', async () => {
+    const { service, getOctokit } = makeService({});
+
+    const result = await service.syncAccount(ACCOUNT_A);
+
+    expect(result.success).toBe(true);
+    expect(getOctokit).not.toHaveBeenCalled();
+    expect(await allFlags()).toHaveLength(0);
   });
 
   it('deleteProjectData keeps viewer-flagged rows for the removed project repo', async () => {
-    await fixture.db.insert(projects).values({ id: 'p1', name: 'P1', path: '/p1' });
-    await fixture.db.insert(projectRemotes).values({
-      projectId: 'p1',
-      remoteName: 'origin',
-      remoteUrl: REPO,
-    });
+    await seedProjectWithRemote('p1', REPO);
 
     const flagged = prNode({ url: `${REPO}/pull/1`, number: 1 });
     const unflagged = prNode({ url: `${REPO}/pull/2`, number: 2 });
