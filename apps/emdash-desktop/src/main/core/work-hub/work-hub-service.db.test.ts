@@ -6,6 +6,7 @@ import {
   projectRemotes,
   projects,
   pullRequests,
+  pullRequestViewerFlags,
   tasks,
   workspaces,
 } from '@main/db/schema';
@@ -97,6 +98,71 @@ describe('getWorkHubSnapshot', () => {
       ])
     );
     expect(snapshot.items).toEqual([]);
+    expect(snapshot.reviewRequests).toEqual([]);
+    expect(snapshot.authoredPrs).toEqual([]);
+  });
+
+  it('returns viewer PR lists with authored excluded and projects mapped per repo', async () => {
+    await fixture.db.insert(pullRequests).values([
+      prRow({
+        url: `${REPO_A}/pull/1`,
+        identifier: '#1',
+        headRefName: 'review-me',
+      }),
+      prRow({
+        url: `${REPO_B}/pull/2`,
+        repositoryUrl: REPO_B,
+        headRepositoryUrl: REPO_B,
+        identifier: '#2',
+        headRefName: 'mine',
+      }),
+      prRow({
+        url: `${REPO_A}/pull/3`,
+        identifier: '#3',
+        headRefName: 'closed-one',
+        status: 'closed',
+      }),
+    ]);
+    await fixture.db.insert(pullRequestViewerFlags).values([
+      // Review requested by one account, authored per another: authored wins exclusion.
+      {
+        pullRequestUrl: `${REPO_B}/pull/2`,
+        providerAccountId: 'github.com:1',
+        reviewRequested: 1,
+        authored: 0,
+        syncedAt: NOW,
+      },
+      {
+        pullRequestUrl: `${REPO_B}/pull/2`,
+        providerAccountId: 'github.com:2',
+        reviewRequested: 0,
+        authored: 1,
+        syncedAt: NOW,
+      },
+      {
+        pullRequestUrl: `${REPO_A}/pull/1`,
+        providerAccountId: 'github.com:1',
+        reviewRequested: 1,
+        authored: 0,
+        syncedAt: NOW,
+      },
+      // Closed PRs never surface even when flagged.
+      {
+        pullRequestUrl: `${REPO_A}/pull/3`,
+        providerAccountId: 'github.com:1',
+        reviewRequested: 1,
+        authored: 1,
+        syncedAt: NOW,
+      },
+    ]);
+
+    const snapshot = await getWorkHubSnapshot();
+    expect(
+      snapshot.reviewRequests.map((item) => ({ url: item.pr.url, projectId: item.projectId }))
+    ).toEqual([{ url: `${REPO_A}/pull/1`, projectId: 'project-a' }]);
+    expect(
+      snapshot.authoredPrs.map((item) => ({ url: item.pr.url, projectId: item.projectId }))
+    ).toEqual([{ url: `${REPO_B}/pull/2`, projectId: 'project-b' }]);
   });
 
   it('excludes archived tasks and joins the project name', async () => {

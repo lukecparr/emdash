@@ -31,9 +31,49 @@ export interface WorkHubItem {
   agent: WorkHubAgentSummary;
 }
 
+/** A viewer-synced PR paired with the Emdash project that owns its repository. */
+export interface WorkHubPrItem {
+  projectId: string;
+  pr: PullRequest;
+}
+
 export interface WorkHubSnapshot {
   projects: WorkHubProjectRef[];
   items: WorkHubItem[];
+  /** Open PRs where the viewer's review is requested (excluding viewer-authored), updatedAt desc. */
+  reviewRequests: WorkHubPrItem[];
+  /** All open PRs authored by the viewer, updatedAt desc. */
+  authoredPrs: WorkHubPrItem[];
+}
+
+const FAILING_CHECK_CONCLUSIONS = new Set(['FAILURE', 'TIMED_OUT', 'ACTION_REQUIRED']);
+
+export function prHasFailingChecks(pr: Pick<PullRequest, 'checks'>): boolean {
+  return pr.checks.some(
+    (check) => check.conclusion !== null && FAILING_CHECK_CONCLUSIONS.has(check.conclusion)
+  );
+}
+
+/** An authored PR needs the author's attention: failing CI, conflicts, or changes requested. */
+export function authoredPrNeedsAttention(
+  pr: Pick<PullRequest, 'status' | 'checks' | 'mergeableStatus' | 'reviewDecision'>
+): boolean {
+  if (pr.status !== 'open') return false;
+  return (
+    prHasFailingChecks(pr) ||
+    pr.mergeableStatus === 'CONFLICTING' ||
+    pr.reviewDecision === 'CHANGES_REQUESTED'
+  );
+}
+
+/** Sort for the "My PRs" section: needs-attention first, then most recently updated. */
+export function sortAuthoredPrs(items: readonly WorkHubPrItem[]): WorkHubPrItem[] {
+  return [...items].sort((a, b) => {
+    const aAttention = authoredPrNeedsAttention(a.pr);
+    const bAttention = authoredPrNeedsAttention(b.pr);
+    if (aAttention !== bAttention) return aAttention ? -1 : 1;
+    return b.pr.updatedAt.localeCompare(a.pr.updatedAt);
+  });
 }
 
 export const workHubSections = ['attention', 'active', 'review', 'planned', 'done'] as const;

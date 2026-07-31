@@ -7,6 +7,7 @@ import {
   pullRequestLabels,
   pullRequests,
   pullRequestUsers,
+  pullRequestViewerFlags,
 } from '@main/db/schema';
 import type {
   Label,
@@ -155,6 +156,40 @@ export class PrQueryService {
     const rows = await query.limit(limit).offset(offset);
 
     return fetchRelated(rows);
+  }
+
+  /**
+   * Open PRs flagged by any viewer-scoped account sync, with the
+   * review-requested/authored bits OR-ed across accounts per PR.
+   */
+  async getViewerFlaggedPullRequests(): Promise<
+    Array<{ pr: PullRequest; reviewRequested: boolean; authored: boolean }>
+  > {
+    const rows = await db
+      .select({ pr: pullRequests, flag: pullRequestViewerFlags })
+      .from(pullRequestViewerFlags)
+      .innerJoin(pullRequests, eq(pullRequestViewerFlags.pullRequestUrl, pullRequests.url))
+      .where(eq(pullRequests.status, 'open'));
+
+    const byUrl = new Map<
+      string,
+      { row: (typeof rows)[number]['pr']; reviewRequested: boolean; authored: boolean }
+    >();
+    for (const { pr, flag } of rows) {
+      const entry = byUrl.get(pr.url) ?? { row: pr, reviewRequested: false, authored: false };
+      entry.reviewRequested ||= flag.reviewRequested !== 0;
+      entry.authored ||= flag.authored !== 0;
+      byUrl.set(pr.url, entry);
+    }
+
+    const entries = [...byUrl.values()];
+    const prs = await fetchRelated(entries.map((e) => e.row));
+    const assembled = new Map(prs.map((pr) => [pr.url, pr]));
+    return entries.flatMap((entry) => {
+      const pr = assembled.get(entry.row.url);
+      if (!pr) return [];
+      return [{ pr, reviewRequested: entry.reviewRequested, authored: entry.authored }];
+    });
   }
 
   async getPullRequestsByBranches(

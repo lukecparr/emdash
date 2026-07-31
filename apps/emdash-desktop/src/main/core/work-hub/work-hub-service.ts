@@ -5,7 +5,7 @@ import type { AgentStatus } from '@shared/core/agents/agentEvents';
 import type { PullRequest } from '@shared/core/pull-requests/pull-requests';
 import { selectCurrentPr } from '@shared/core/pull-requests/pull-requests';
 import type { TaskLifecycleStatus } from '@shared/core/tasks/tasks';
-import type { WorkHubItem, WorkHubSnapshot } from '@shared/core/work-hub/work-hub';
+import type { WorkHubItem, WorkHubPrItem, WorkHubSnapshot } from '@shared/core/work-hub/work-hub';
 import { aggregateAgentStatus } from '@shared/core/work-hub/work-hub';
 import { prQueryService } from '../pull-requests/pr-query-service';
 
@@ -20,6 +20,43 @@ function chunk<T>(values: readonly T[]): T[][] {
   return chunks;
 }
 
+async function getViewerPrLists(): Promise<
+  Pick<WorkHubSnapshot, 'reviewRequests' | 'authoredPrs'>
+> {
+  const flagged = await prQueryService.getViewerFlaggedPullRequests();
+
+  // Map each PR to the project owning its repository so the renderer can
+  // launch the create-task (checkout PR in worktree) flow. First project
+  // wins when several share a remote.
+  const remoteRows = await db
+    .select({ projectId: projectRemotes.projectId, remoteUrl: projectRemotes.remoteUrl })
+    .from(projectRemotes);
+  const projectByRemoteUrl = new Map<string, string>();
+  for (const row of remoteRows) {
+    if (!projectByRemoteUrl.has(row.remoteUrl)) {
+      projectByRemoteUrl.set(row.remoteUrl, row.projectId);
+    }
+  }
+  const toItem = (pr: PullRequest): WorkHubPrItem[] => {
+    const projectId =
+      projectByRemoteUrl.get(pr.repositoryUrl) ?? projectByRemoteUrl.get(pr.headRepositoryUrl);
+    return projectId === undefined ? [] : [{ projectId, pr }];
+  };
+
+  const byUpdatedAtDesc = (a: WorkHubPrItem, b: WorkHubPrItem) =>
+    b.pr.updatedAt.localeCompare(a.pr.updatedAt);
+  return {
+    reviewRequests: flagged
+      .filter((f) => f.reviewRequested && !f.authored)
+      .flatMap((f) => toItem(f.pr))
+      .sort(byUpdatedAtDesc),
+    authoredPrs: flagged
+      .filter((f) => f.authored)
+      .flatMap((f) => toItem(f.pr))
+      .sort(byUpdatedAtDesc),
+  };
+}
+
 export async function getWorkHubSnapshot(): Promise<WorkHubSnapshot> {
   const projectRows = await db.select({ id: projects.id, name: projects.name }).from(projects);
   const projectNames = new Map(projectRows.map((p) => [p.id, p.name]));
@@ -31,7 +68,7 @@ export async function getWorkHubSnapshot(): Promise<WorkHubSnapshot> {
     .orderBy(desc(tasks.updatedAt));
 
   if (taskRows.length === 0) {
-    return { projects: projectRows, items: [] };
+    return { projects: projectRows, items: [], ...(await getViewerPrLists()) };
   }
 
   const taskIds = taskRows.map((t) => t.id);
@@ -135,5 +172,5 @@ export async function getWorkHubSnapshot(): Promise<WorkHubSnapshot> {
     };
   });
 
-  return { projects: projectRows, items };
+  return { projects: projectRows, items, ...(await getViewerPrLists()) };
 }

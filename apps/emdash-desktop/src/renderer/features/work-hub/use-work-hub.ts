@@ -2,7 +2,11 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { useEffect, useRef } from 'react';
 import { events, rpc } from '@renderer/lib/ipc';
 import { conversationAgentStatusChangedChannel } from '@shared/core/conversations/conversationEvents';
-import { prSyncProgressChannel, prUpdatedChannel } from '@shared/core/pull-requests/prEvents';
+import {
+  prSyncProgressChannel,
+  prUpdatedChannel,
+  viewerPrsUpdatedChannel,
+} from '@shared/core/pull-requests/prEvents';
 import {
   taskCreatedChannel,
   taskDeletedChannel,
@@ -47,6 +51,7 @@ export function useWorkHubEventBridge() {
       events.on(taskStatusUpdatedChannel, scheduleInvalidate),
       events.on(taskProvisionedChannel, scheduleInvalidate),
       events.on(prUpdatedChannel, scheduleInvalidate),
+      events.on(viewerPrsUpdatedChannel, scheduleInvalidate),
       events.on(prSyncProgressChannel, (progress) => {
         if (progress.status === 'done') scheduleInvalidate();
       }),

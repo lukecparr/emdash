@@ -300,6 +300,25 @@ export const pullRequestChecks = sqliteTable(
   })
 );
 
+export const pullRequestViewerFlags = sqliteTable(
+  'pull_request_viewer_flags',
+  {
+    pullRequestUrl: text('pull_request_url')
+      .notNull()
+      .references(() => pullRequests.url, { onDelete: 'cascade' }),
+    // The provider_accounts.account_id string (`${host}:${providerAccountId}`), not the
+    // row PK: auth contexts and the GitHub account APIs only ever expose account_id.
+    providerAccountId: text('provider_account_id').notNull(),
+    reviewRequested: integer('review_requested').notNull().default(0),
+    authored: integer('authored').notNull().default(0),
+    syncedAt: text('synced_at').notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.pullRequestUrl, table.providerAccountId] }),
+    accountIdx: index('idx_prvf_provider_account_id').on(table.providerAccountId),
+  })
+);
+
 export const automations = sqliteTable(
   'automations',
   {
