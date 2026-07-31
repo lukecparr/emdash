@@ -7,6 +7,7 @@ import { projectView } from '@renderer/features/projects/view';
 import { settingsView } from '@renderer/features/settings/settings-view';
 import { skillsView } from '@renderer/features/skills/skills-view';
 import { taskView } from '@renderer/features/tasks/view';
+import { workHubView } from '@renderer/features/work-hub/work-hub-view';
 import type { CommandProvider } from '@renderer/lib/commands/types';
 import { appState } from '@renderer/lib/stores/app-state';
 
@@ -14,6 +15,7 @@ import { appState } from '@renderer/lib/stores/app-state';
 export const views = {
   home: homeView,
   automations: automationsView,
+  work: workHubView,
   library: libraryView,
   skills: skillsView,
   mcp: mcpView,
